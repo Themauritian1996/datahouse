@@ -20,7 +20,14 @@ OUT = Path(os.environ.get("DATAHOUSE_OUT", ROOT / "_out"))
 EXTRACT = Path(os.environ.get("DATAHOUSE_EXTRACT", WORK / "extrait"))
 
 CKAN = "https://www.donneesquebec.ca/recherche/api/3/action/package_show?id={id}"
-UA = {"User-Agent": "DataHouse-data-pipeline/1.0 (+https://github.com)"}
+# En-têtes de navigateur : certains serveurs publics (p. ex. Statistique Canada)
+# refusent les clients qui ne s'identifient pas comme un navigateur.
+UA = {
+    "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                   "(KHTML, like Gecko) Chrome/141.0 Safari/537.36"),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "fr-CA,fr;q=0.9,en;q=0.8",
+}
 
 log = logging.getLogger("datahouse")
 

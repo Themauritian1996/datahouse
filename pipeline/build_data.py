@@ -127,8 +127,16 @@ def main() -> None:
         units = role_mod.load_role(fx["gpkg"], munis)
     else:
         munis = boundaries.load_boundaries()
-        census = census_mod.load_census()
-        rfu = rfu_mod.load_rfu()
+        try:
+            census = census_mod.load_census()
+        except Exception as exc:  # noqa: BLE001 — le recensement enrichit, il n'est pas essentiel
+            log.warning("recensement indisponible, analyse sans démographie : %s", exc)
+            census = {}
+        try:
+            rfu = rfu_mod.load_rfu()
+        except Exception as exc:  # noqa: BLE001
+            log.warning("facteurs comparatifs indisponibles, repli sur la tendance du rôle : %s", exc)
+            rfu = {}
         cpi = markets.rent_cpi_factor()
         asking = markets.asking_rents()
         rate = markets.mortgage_rate()

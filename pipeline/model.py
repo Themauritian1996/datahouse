@@ -151,6 +151,8 @@ def liquidity(pop, croiss, g, mob, ratio_prix_revenu) -> dict:
         "mobilite": (lin(mob, 5, 20), 0.15),
         "abordabilite": (lin(ratio_prix_revenu, 10, 3) if ratio_prix_revenu else None, 0.20),
     }
+    if sum(1 for v, w in comps.values() if v is not None) < 3:  # trop peu d'indicateurs
+        return {"score": None, "composantes": {k: None if v is None else round(v) for k, (v, w) in comps.items()}}
     tot = sum(w for v, w in comps.values() if v is not None)
     score = sum(v * w for v, w in comps.values() if v is not None) / tot if tot else None
     return {"score": None if score is None else round(score),
