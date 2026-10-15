@@ -1,0 +1,76 @@
+name: Données
+
+# Chaque semaine : vérifie les sources publiques, ne retélécharge que ce qui a changé,
+# recalcule les estimations (taux, loyers, nouvelles…) et publie l'archive des données
+# comme « release » (étiquette `donnees`), puis redéploie le site.
+on:
+  schedule:
+    - cron: '23 8 * * 1'   # chaque lundi vers 4 h 23 (heure de Montréal)
+  workflow_dispatch:
+    inputs:
+      nouvelles:
+        description: 'Inclure les nouvelles locales'
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  construire:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Dépendances
+        run: |
+          pip install -r pipeline/requirements.txt
+          npm install -g mapshaper
+      - name: Cache des fichiers sources (évite de retélécharger ~1 Go chaque semaine)
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/travail
+          key: sources-${{ github.run_id }}
+          restore-keys: sources-
+      - name: Construction des données
+        working-directory: pipeline
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          PIGNON_WORK: ${{ runner.temp }}/travail
+          PIGNON_EXTRACT: ${{ runner.temp }}/extrait
+        run: |
+          ARGS=""
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.nouvelles }}" = "false" ]; then ARGS="--no-news"; fi
+          python build_data.py $ARGS
+      - name: Archive
+        run: |
+          tar -czf donnees.tar.gz -C pipeline/_out data
+          ls -lh donnees.tar.gz
+          du -sh pipeline/_out/data
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          m = json.load(open('pipeline/_out/data/meta.json'))
+          print(f"### Données Pignon — {m['genere']}")
+          print(f"- {m['nbUnites']:,} propriétés résidentielles".replace(',', ' '))
+          print(f"- {m['nbMunicipalites']} municipalités")
+          print(f"- Facteurs comparatifs : {m['rfuAnnees']}")
+          print(f"- Taux hypothécaire affiché 5 ans : {m['hypotheque']}")
+          print(f"- Indice des loyers : {m['loyerIPC']}")
+          PY
+      - name: Publication de l'archive
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view donnees >/dev/null 2>&1 || gh release create donnees --title "Données" --notes "Données générées automatiquement par le flux « Données »."
+          gh release upload donnees donnees.tar.gz --clobber
+      - name: Redéploiement du site
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run deploiement.yml

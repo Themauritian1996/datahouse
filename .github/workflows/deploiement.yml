@@ -1,0 +1,51 @@
+name: Déploiement
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deployer:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploiement.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Données (réelles si disponibles, sinon démonstration)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf site/data
+          if gh release download donnees -p donnees.tar.gz; then
+            tar -xzf donnees.tar.gz -C site
+          else
+            echo "Aucune donnée réelle : site de démonstration."
+            pip install -r pipeline/requirements.txt
+            (cd pipeline && python build_data.py --demo)
+            cp -r pipeline/_out/data site/data
+          fi
+      - name: Numéro de version (contourne le cache des navigateurs)
+        run: |
+          V="${{ github.run_number }}"
+          sed -i "s/__VERSION__/$V/g" site/index.html
+          sed -i -E "s#(from '\./[a-z-]+\.js)'#\1?v=$V'#g" site/js/*.js
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deploiement
+        uses: actions/deploy-pages@v4

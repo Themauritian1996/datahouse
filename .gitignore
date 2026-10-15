@@ -1,0 +1,8 @@
+node_modules/
+pipeline/_out/
+pipeline/_work/
+pipeline/fixtures/_gen/
+site/data/
+tests/shots/
+__pycache__/
+*.tar.gz

@@ -1,0 +1,20 @@
+rules_version = '2';
+// Règles Firestore de Pignon : chaque utilisateur ne voit et ne modifie que ses propres données.
+// Le champ `plan` (forfait) ne peut pas être modifié par l'utilisateur : seul l'administrateur
+// (console Firebase ou fonction serveur après paiement) peut le changer.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow create: if request.auth != null && request.auth.uid == uid
+                    && request.resource.data.plan == 'gratuit';
+      allow update: if request.auth != null && request.auth.uid == uid
+                    && request.resource.data.plan == resource.data.plan;
+      allow delete: if false;
+
+      match /{sous=**} {
+        allow read, write: if request.auth != null && request.auth.uid == uid;
+      }
+    }
+  }
+}
