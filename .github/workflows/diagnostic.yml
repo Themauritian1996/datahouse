@@ -1,0 +1,28 @@
+name: Diagnostic des sources
+
+on:
+  workflow_dispatch:
+
+jobs:
+  sondes:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Joignabilité des sources de données
+        run: |
+          UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0 Safari/537.36"
+          for u in \
+            "https://www.donneesquebec.ca/recherche/api/3/action/package_show?id=roles-d-evaluation-fonciere-du-quebec" \
+            "https://donneesouvertes.affmunqc.net/role/ROLE2026_GEOPACKAGE.zip" \
+            "https://mamh.gouv.qc.ca/fichiersdonneesouvertes/RFU-2026.csv" \
+            "https://www.mamh.gouv.qc.ca/" \
+            "https://diffusion.mern.gouv.qc.ca/diffusion/RGQ/Vectoriel/Theme/Regional/SDA_100k/SHP/BDAT(adm)_SHP.zip" \
+            "https://www12.statcan.gc.ca/census-recensement/2021/geo/sip-pis/boundary-limites/files-fichiers/lcsd000b21a_e.zip" \
+            "https://www12.statcan.gc.ca/census-recensement/2021/dp-pd/prof/details/download-telecharger/comp/GetFile.cfm?Lang=E&FILETYPE=CSV&GEONO=020" \
+            "https://www150.statcan.gc.ca/n1/tbl/csv/18100004-eng.zip" \
+            "https://www.bankofcanada.ca/valet/observations/V80691335/json?recent=1" \
+            "https://news.google.com/rss/search?q=Montreal&hl=fr-CA" \
+            "https://ftp.maps.canada.ca/" ; do
+            r=$(curl -s -o /dev/null -I -L -A "$UA" --connect-timeout 20 --max-time 40 -w "%{http_code} %{size_download} %{time_total}s" "$u" || echo "ECHEC")
+            echo "$r  $u" | tee -a "$GITHUB_STEP_SUMMARY"
+          done
+          echo "IP publique : $(curl -s https://api.ipify.org)" | tee -a "$GITHUB_STEP_SUMMARY"
