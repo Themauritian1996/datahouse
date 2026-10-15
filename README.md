@@ -1,6 +1,6 @@
-# Pignon — le prix juste de l'immobilier au Québec
+# DataHouse — le prix juste de l'immobilier au Québec
 
-Pignon estime la valeur marchande de chaque propriété résidentielle du Québec à partir de données publiques. Il présente ensuite l'analyse selon le profil de l'utilisateur : acheteur, vendeur (avec ou sans courtier), investisseur ou courtier.
+DataHouse estime la valeur marchande de chaque propriété résidentielle du Québec à partir de données publiques. Il présente ensuite l'analyse selon le profil de l'utilisateur : acheteur, vendeur (avec ou sans courtier), investisseur ou courtier.
 
 - **Carte** de toutes les municipalités : prix médian, tendance, rendement locatif et facilité de revente.
 - **Fiche de propriété** :
@@ -37,7 +37,7 @@ valeur estimée = valeur au rôle × facteur comparatif MAMH × (1 + tendance)^a
 - **Tendance** : elle provient de l'évolution du facteur comparatif d'une année à l'autre. À défaut, on utilise l'écart entre le rôle antérieur et le rôle actuel des mêmes immeubles. La tendance est lissée vers la médiane de la MRC.
 - **Fourchette** : elle s'élargit selon le type de propriété, l'atypicité, la taille de la municipalité et la durée d'extrapolation.
 
-Aucune donnée Centris ou MLS n'est utilisée. Le nom et l'adresse des propriétaires ne figurent pas dans les données ouvertes, et Pignon ne les affiche jamais.
+Aucune donnée Centris ou MLS n'est utilisée. Le nom et l'adresse des propriétaires ne figurent pas dans les données ouvertes, et DataHouse ne les affiche jamais.
 
 ### Sources (vérifiées automatiquement chaque semaine)
 
@@ -54,7 +54,7 @@ Aucune donnée Centris ou MLS n'est utilisée. Le nom et l'adresse des propriét
 
 ## Mise en ligne (environ 30 minutes)
 
-1. **GitHub** : créez un dépôt (p. ex. `pignon`) et poussez-y ce dossier.
+1. **GitHub** : créez un dépôt (p. ex. `datahouse`) et poussez-y ce dossier.
    - Dans *Settings → Pages*, choisissez **Source : GitHub Actions**.
 2. **Premier déploiement** : il part automatiquement à la poussée et affiche des **données de démonstration**, signalées par une bannière jaune.
 3. **Données réelles** : allez dans *Actions → Données → Run workflow*.

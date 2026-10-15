@@ -1,11 +1,11 @@
-"""Construit toutes les données statiques de Pignon.
+"""Construit toutes les données statiques de DataHouse.
 
 Usage :
     python build_data.py                 # données réelles (GitHub Actions)
     python build_data.py --demo          # données simulées (tests, démonstration)
     python build_data.py --no-news       # sans nouvelles
 
-Sortie : PIGNON_OUT (par défaut pipeline/_out) contenant data/…
+Sortie : DATAHOUSE_OUT (par défaut pipeline/_out) contenant data/…
 """
 from __future__ import annotations
 

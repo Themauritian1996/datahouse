@@ -1,5 +1,5 @@
 rules_version = '2';
-// Règles Firestore de Pignon : chaque utilisateur ne voit et ne modifie que ses propres données.
+// Règles Firestore de DataHouse : chaque utilisateur ne voit et ne modifie que ses propres données.
 // Le champ `plan` (forfait) ne peut pas être modifié par l'utilisateur : seul l'administrateur
 // (console Firebase ou fonction serveur après paiement) peut le changer.
 service cloud.firestore {

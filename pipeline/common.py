@@ -1,4 +1,4 @@
-"""Outils partagés du pipeline de données Pignon."""
+"""Outils partagés du pipeline de données DataHouse."""
 from __future__ import annotations
 
 import json
@@ -14,15 +14,15 @@ from pathlib import Path
 import requests
 
 ROOT = Path(__file__).resolve().parent
-WORK = Path(os.environ.get("PIGNON_WORK", ROOT / "_work"))
-OUT = Path(os.environ.get("PIGNON_OUT", ROOT / "_out"))
+WORK = Path(os.environ.get("DATAHOUSE_WORK", ROOT / "_work"))
+OUT = Path(os.environ.get("DATAHOUSE_OUT", ROOT / "_out"))
 # Les archives extraites (plusieurs Go) restent hors du cache GitHub Actions.
-EXTRACT = Path(os.environ.get("PIGNON_EXTRACT", WORK / "extrait"))
+EXTRACT = Path(os.environ.get("DATAHOUSE_EXTRACT", WORK / "extrait"))
 
 CKAN = "https://www.donneesquebec.ca/recherche/api/3/action/package_show?id={id}"
-UA = {"User-Agent": "Pignon-data-pipeline/1.0 (+https://github.com)"}
+UA = {"User-Agent": "DataHouse-data-pipeline/1.0 (+https://github.com)"}
 
-log = logging.getLogger("pignon")
+log = logging.getLogger("datahouse")
 
 
 def setup_logging() -> None:

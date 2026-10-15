@@ -70,7 +70,7 @@ def run(pw, viewport, name, dark=False):
     page.route("**/*", mock)
     page.add_init_script("window.print = () => { window.__printed = true; }")
     page.goto(BASE)
-    page.wait_for_function("window.pignon && window.pignon.carte && window.pignon.carte.map.getSource('munis')", timeout=20000)
+    page.wait_for_function("window.datahouse && window.datahouse.carte && window.datahouse.carte.map.getSource('munis')", timeout=20000)
     page.wait_for_timeout(800)
     page.screenshot(path=SHOTS / f"{name}-01-carte.png")
 

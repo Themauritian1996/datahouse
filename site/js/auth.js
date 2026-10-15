@@ -17,8 +17,8 @@ export const forfait = () => CONFIG.forfaits[current?.plan || 'gratuit'] || CONF
 // ---------- Mode local ----------
 function store(key, value) {
   try {
-    if (value === undefined) return JSON.parse(localStorage.getItem(`pignon:${key}`) || 'null');
-    localStorage.setItem(`pignon:${key}`, JSON.stringify(value));
+    if (value === undefined) return JSON.parse(localStorage.getItem(`datahouse:${key}`) || 'null');
+    localStorage.setItem(`datahouse:${key}`, JSON.stringify(value));
   } catch { /* stockage indisponible */ }
   return null;
 }
@@ -95,7 +95,7 @@ function firebaseBackend(cfg) {
       const ref = fs.doc(db, 'users', fbUser.uid);
       const snap = await fs.getDoc(ref);
       if (!snap.exists()) {
-        const pending = JSON.parse(sessionStorage.getItem('pignon:nouveau') || '{}');
+        const pending = JSON.parse(sessionStorage.getItem('datahouse:nouveau') || '{}');
         const doc = { email: fbUser.email, nom: pending.nom || fbUser.displayName || '', profil: pending.profil || 'acheteur',
           plan: 'gratuit', creeLe: new Date().toISOString() };
         await fs.setDoc(ref, doc);
@@ -104,12 +104,12 @@ function firebaseBackend(cfg) {
       return { uid: fbUser.uid, ...snap.data() };
     },
     async signUp({ email, password, nom, profil }) {
-      sessionStorage.setItem('pignon:nouveau', JSON.stringify({ nom, profil }));
+      sessionStorage.setItem('datahouse:nouveau', JSON.stringify({ nom, profil }));
       await fa.createUserWithEmailAndPassword(auth, email, password);
     },
     async signIn({ email, password }) { await fa.signInWithEmailAndPassword(auth, email, password); },
     async signInGoogle(profil) {
-      sessionStorage.setItem('pignon:nouveau', JSON.stringify({ profil }));
+      sessionStorage.setItem('datahouse:nouveau', JSON.stringify({ profil }));
       await fa.signInWithPopup(auth, new fa.GoogleAuthProvider());
     },
     async signOut() { await fa.signOut(auth); },

@@ -1,4 +1,4 @@
-// Moteur de calcul de Pignon : fonctions pures, sans accès au DOM.
+// Moteur de calcul de DataHouse : fonctions pures, sans accès au DOM.
 // Toutes les valeurs sont en dollars canadiens.
 
 export const TYPE_ORDER = ['U', 'C', 'P', 'M', 'H', 'R', 'X'];

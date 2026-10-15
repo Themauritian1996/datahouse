@@ -4,7 +4,7 @@ import { fold } from './format.js';
 import { CONFIG } from './config.js';
 
 const BASE = CONFIG.dataUrl.replace(/\/$/, '');
-const V = (window.PIGNON_VERSION || 'dev');
+const V = (window.DATAHOUSE_VERSION || 'dev');
 const jsonCache = new Map();
 const muniCache = new Map();
 const tileCache = new Map();

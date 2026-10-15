@@ -134,7 +134,7 @@ export function pageMethodo(ctx) {
   ctx.page(`<h1>Méthodologie et sources</h1>
     ${section('Estimation de la valeur', `
       <p>Chaque propriété du Québec figure au rôle d'évaluation foncière de sa municipalité, avec une valeur établie à une date de
-      référence (le 1<sup>er</sup> juillet de la 2<sup>e</sup> année précédant l'entrée en vigueur du rôle). Pignon ramène cette valeur à aujourd'hui :</p>
+      référence (le 1<sup>er</sup> juillet de la 2<sup>e</sup> année précédant l'entrée en vigueur du rôle). DataHouse ramène cette valeur à aujourd'hui :</p>
       <p class="formula">valeur estimée = valeur au rôle × facteur comparatif × (1 + tendance)<sup>années</sup></p>
       <ul class="check">
         <li><b>Facteur comparatif</b> : publié chaque année par le ministère des Affaires municipales et de l'Habitation (MAMH) pour chaque municipalité.

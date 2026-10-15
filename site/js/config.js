@@ -1,6 +1,6 @@
-// Configuration de Pignon. C'est le seul fichier à modifier pour brancher vos comptes.
+// Configuration de DataHouse. C'est le seul fichier à modifier pour brancher vos comptes.
 export const CONFIG = {
-  appName: 'Pignon',
+  appName: 'DataHouse',
   slogan: 'Le prix juste, chiffres en main.',
   dataUrl: 'data',
 

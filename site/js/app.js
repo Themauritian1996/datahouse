@@ -174,11 +174,11 @@ function setupTheme() {
     if (t === 'auto') delete document.documentElement.dataset.theme;
     else document.documentElement.dataset.theme = t;
   };
-  let t = localStorage.getItem('pignon:theme') || 'auto';
+  let t = localStorage.getItem('datahouse:theme') || 'auto';
   apply(t);
   $('#theme').addEventListener('click', () => {
     t = { auto: 'dark', dark: 'light', light: 'auto' }[t];
-    localStorage.setItem('pignon:theme', t);
+    localStorage.setItem('datahouse:theme', t);
     apply(t);
     ctx.carte.applyBase();
     toast({ auto: 'Thème automatique', dark: 'Thème sombre', light: 'Thème clair' }[t]);
@@ -216,7 +216,7 @@ async function main() {
   await auth.initAuth();
   window.addEventListener('hashchange', () => { navCount += 1; route(); });
   window.addEventListener('resize', () => ctx.carte.resize());
-  window.pignon = ctx; // utile pour le débogage et les tests
+  window.datahouse = ctx; // utile pour le débogage et les tests
   if (location.hash.length > 2) route();
 }
 

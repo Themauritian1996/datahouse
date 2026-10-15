@@ -43,8 +43,8 @@ jobs:
         working-directory: pipeline
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          PIGNON_WORK: ${{ runner.temp }}/travail
-          PIGNON_EXTRACT: ${{ runner.temp }}/extrait
+          DATAHOUSE_WORK: ${{ runner.temp }}/travail
+          DATAHOUSE_EXTRACT: ${{ runner.temp }}/extrait
         run: |
           ARGS=""
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.nouvelles }}" = "false" ]; then ARGS="--no-news"; fi
@@ -57,7 +57,7 @@ jobs:
           python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
           import json
           m = json.load(open('pipeline/_out/data/meta.json'))
-          print(f"### Données Pignon — {m['genere']}")
+          print(f"### Données DataHouse — {m['genere']}")
           print(f"- {m['nbUnites']:,} propriétés résidentielles".replace(',', ' '))
           print(f"- {m['nbMunicipalites']} municipalités")
           print(f"- Facteurs comparatifs : {m['rfuAnnees']}")
