@@ -41,9 +41,39 @@ def _open_csv(path: Path) -> io.TextIOBase | Path:
     return path
 
 
+POP_TABLE = "https://www150.statcan.gc.ca/n1/tbl/csv/98100002-eng.zip"  # serveur joignable depuis GitHub
+
+
+def load_population_table(source: Path | None = None) -> dict[str, dict]:
+    """Repli : population 2016-2021 et densité par municipalité (tableau 98-10-0002)."""
+    source = source or download(POP_TABLE, WORK / "pop_98100002.zip", timeout=300)
+    z = zipfile.ZipFile(source)
+    name = next(n for n in z.namelist() if n.endswith(".csv") and "metadata" not in n.lower())
+    df = pd.read_csv(io.TextIOWrapper(z.open(name), encoding="utf-8-sig"), dtype=str)
+    member = next(c for c in df.columns if "dwelling counts" in c.lower() or "chiffres de population" in c.lower())
+    wanted = {
+        "Population, 2021": "pop2021", "Population, 2016": "pop2016",
+        "Population percentage change, 2016 to 2021": "croissancePop",
+        "Population density per square kilometre": "densite",
+    }
+    df = df[df[member].str.strip().isin(wanted) & df["DGUID"].str.contains("A0005", na=False)]
+    out: dict[str, dict] = {}
+    for dguid, m, v in zip(df["DGUID"], df[member].str.strip(), pd.to_numeric(df["VALUE"], errors="coerce")):
+        sgc = dguid.split("A0005")[-1]
+        if not sgc.startswith("24") or pd.isna(v):
+            continue
+        out.setdefault(sgc[2:7], {})[wanted[m]] = float(v)
+    log.info("population (tableau 98-10-0002) : %d municipalités", len(out))
+    return out
+
+
 def load_census(source: Path | None = None) -> dict[str, dict]:
     if source is None:
-        source = download(URL, WORK / "census_qc_csd.bin", timeout=300)
+        try:
+            source = download(URL, WORK / "census_qc_csd.bin", timeout=300)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("profil du recensement inaccessible (%s) ; repli sur le tableau de population", exc)
+            return load_population_table()
     handle = _open_csv(source)
     usecols = ["ALT_GEO_CODE", "GEO_LEVEL", "CHARACTERISTIC_ID", "CHARACTERISTIC_NAME", "C1_COUNT_TOTAL"]
     df = pd.read_csv(handle, usecols=lambda c: c in usecols, encoding="latin-1", dtype=str, low_memory=False)

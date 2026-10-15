@@ -44,7 +44,7 @@ def _signature(headers) -> dict:
     return {k: headers.get(k) for k in ("ETag", "Last-Modified", "Content-Length") if headers.get(k)}
 
 
-def download(url: str, dest: Path, retries: int = 4, timeout: int = 120) -> Path:
+def download(url: str, dest: Path, retries: int = 3, timeout: int = 120) -> Path:
     """Télécharge un fichier avec reprises.
 
     Si le fichier est déjà présent (cache de la semaine précédente), une requête HEAD
@@ -69,7 +69,7 @@ def download(url: str, dest: Path, retries: int = 4, timeout: int = 120) -> Path
     for attempt in range(1, retries + 1):
         try:
             log.info("téléchargement %s (essai %d)", url, attempt)
-            with requests.get(url, stream=True, timeout=timeout, headers=UA) as r:
+            with requests.get(url, stream=True, timeout=(20, timeout), headers=UA) as r:
                 r.raise_for_status()
                 sig = _signature(r.headers)
                 with open(tmp, "wb") as f:

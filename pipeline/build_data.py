@@ -143,6 +143,8 @@ def main() -> None:
         units = role_mod.load_role(None, munis)
 
     cur_rfu = rfu[max(rfu)] if rfu else {}
+    if munis is None:
+        munis = boundaries.from_units(units, {c: r.get("nom") for c, r in cur_rfu.items()})
     mrc_of = {c: (r.get("mrc") or "?") for c, r in cur_rfu.items()}
     factors = model.market_factors(units, rfu, today, mrc_of)
     units["est"] = units["vr"] * units["muni"].map(lambda c: factors[c]["adj"])

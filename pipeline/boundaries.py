@@ -74,7 +74,7 @@ def _normalise(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     return gdf.dissolve(by="code", as_index=False, aggfunc="first")
 
 
-def load_boundaries(source: Path | None = None) -> gpd.GeoDataFrame:
+def load_boundaries(source: Path | None = None) -> gpd.GeoDataFrame | None:
     """Retourne les municipalités du Québec (EPSG:4326) avec `code` (5 chiffres) et `nom`."""
     if source is not None:
         gdf = _normalise(gpd.read_file(source))
@@ -88,9 +88,35 @@ def load_boundaries(source: Path | None = None) -> gpd.GeoDataFrame:
             except Exception as exc:  # noqa: BLE001
                 log.warning("limites municipales indisponibles (%s) : %s", name, exc)
         if gdf is None:
-            raise RuntimeError("Aucune source de limites municipales n'a répondu")
+            log.warning("aucune source officielle de limites : contours reconstruits à partir du rôle")
+            return None
     log.info("limites : %d municipalités", len(gdf))
     return gdf
+
+
+def from_units(units: pd.DataFrame, names: dict[str, str], cell: float = 0.004) -> gpd.GeoDataFrame:
+    """Contours approximatifs des municipalités, reconstruits à partir des unités d'évaluation.
+
+    Chaque cellule d'une grille d'environ 400 m est attribuée à la municipalité la plus
+    représentée, puis les cellules sont fusionnées par municipalité et adoucies.
+    Résultat : des zones habitées sans chevauchement, suffisantes pour la carte.
+    """
+    from shapely.geometry import box
+
+    df = pd.DataFrame({
+        "cx": (units["lon"] // cell).astype(int), "cy": (units["lat"] // cell).astype(int),
+        "code": units["muni"].astype(str),
+    })
+    counts = df.groupby(["cx", "cy", "code"]).size().reset_index(name="n")
+    best = counts.sort_values("n", ascending=False).drop_duplicates(["cx", "cy"])
+    geoms = [box(x * cell, y * cell, (x + 1) * cell, (y + 1) * cell) for x, y in zip(best["cx"], best["cy"])]
+    cells = gpd.GeoDataFrame({"code": best["code"].to_numpy()}, geometry=geoms, crs=4326)
+    gdf = cells.dissolve(by="code", as_index=False)
+    smooth = cell * 0.6
+    gdf["geometry"] = gdf.geometry.buffer(smooth, 2).buffer(-smooth, 2).simplify(cell / 4)
+    gdf["nom"] = gdf["code"].map(lambda c: names.get(c) or c)
+    log.info("contours reconstruits à partir du rôle : %d municipalités, %d cellules", len(gdf), len(cells))
+    return gdf[["code", "nom", "geometry"]]
 
 
 def export_simplified(gdf: gpd.GeoDataFrame, dest: Path, props: dict[str, dict]) -> None:
