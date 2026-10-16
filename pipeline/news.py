@@ -99,8 +99,16 @@ def fetch_headlines(ville: str, days: int = 90, limit: int = 15) -> list[dict]:
     return out[:limit]
 
 
-def classify(ville: str, items: list[dict], key: str) -> list[dict] | None:
-    """Manchettes pertinentes annotées, ou None si aucun modèle n'a répondu."""
+def classify(ville: str, items: list[dict], keys: list[str]) -> list[dict] | None:
+    """Manchettes pertinentes annotées, ou None si aucune clé ni aucun modèle n'a répondu."""
+    for key in keys:
+        kept = _classify(ville, items, key)
+        if kept is not None:
+            return kept
+    return None
+
+
+def _classify(ville: str, items: list[dict], key: str) -> list[dict] | None:
     listing = "\n".join(f"{i}. {it['titre']} ({it['source']}, {it['date']})" for i, it in enumerate(items))
     body = {
         "contents": [{"parts": [{"text": PROMPT.format(ville=ville, items=listing)}]}],
@@ -131,7 +139,9 @@ def classify(ville: str, items: list[dict], key: str) -> list[dict] | None:
 
 
 def news_for(munis: list[tuple[str, str]]) -> dict[str, dict]:
-    key = (os.environ.get("GEMINI_API_KEY") or "").strip()
+    import re
+    keys = [k for k in re.split(r"[\s,;]+", os.environ.get("GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEYS") or "") if k]
+    key = keys[0] if keys else ""
     if not key:
         log.warning("GEMINI_API_KEY absente : nouvelles sans analyse")
     out = {}
@@ -140,11 +150,11 @@ def news_for(munis: list[tuple[str, str]]) -> dict[str, dict]:
         items = fetch_headlines(ville)
         done = False
         if items and key:
-            kept = classify(ville, items, key)
+            kept = classify(ville, items, keys)
             if kept is not None:
                 items, done = kept, True
                 analysed += 1
         out[code] = {"maj": datetime.now(timezone.utc).date().isoformat(), "analyse": done, "items": items}
         time.sleep(1.0)
-    log.info("nouvelles : %d municipalités, %d analysées par Gemini", len(out), analysed)
+    log.info("nouvelles : %d municipalités, %d analysées par Gemini (%d clé(s))", len(out), analysed, len(keys))
     return out

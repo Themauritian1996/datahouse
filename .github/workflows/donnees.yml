@@ -42,7 +42,7 @@ jobs:
       - name: Construction des données
         working-directory: pipeline
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY || secrets.GEMINI_API_KEYS }}
           DATAHOUSE_WORK: ${{ runner.temp }}/travail
           DATAHOUSE_EXTRACT: ${{ runner.temp }}/extrait
         run: |
