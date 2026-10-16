@@ -151,7 +151,8 @@ export const signInGoogle = wrap((profil) => backend.signInGoogle(profil));
 export const signOut = wrap(() => backend.signOut());
 export const updateProfile = wrap((p) => backend.update(p));
 export const resetPassword = (email) => backend.reset(email);
-export const canGoogle = () => backend?.mode === 'firebase';
+// La connexion Google par fenêtre surgissante ne fonctionne pas dans l'application Android.
+export const canGoogle = () => backend?.mode === 'firebase' && !window.Capacitor?.isNativePlatform?.();
 
 /** Active un forfait sans paiement — mode local (démonstration) seulement. */
 export const setPlanDemo = wrap(async (plan) => {

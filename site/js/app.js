@@ -200,6 +200,7 @@ function setupAccount() {
 async function main() {
   document.title = `${CONFIG.appName} — ${CONFIG.slogan}`;
   ctx.meta = await loadMeta();
+  if (window.Capacitor?.isNativePlatform?.()) { $('#menu-apk').hidden = true; document.body.classList.add('native'); }
   if (ctx.meta.demo) { $('#demo').hidden = false; document.body.classList.add('has-demo'); }
   setupTheme();
   ctx.carte = new Carte($('#map'), {

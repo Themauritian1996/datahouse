@@ -1,8 +1,10 @@
 // Pages pleine largeur : compte, favoris, forfaits, méthodologie, mentions légales.
 import { CONFIG } from './config.js';
 import * as auth from './auth.js';
-import { money, kmoney, esc, date, num } from './format.js';
-import { $, $$, toast, section, row } from './ui.js';
+import { money, kmoney, esc, date, num, pct, signedPct } from './format.js';
+import { unitsAround, getUnit, loadMuni } from './data.js';
+import { estimate, percentile, loyerEstime, indiceRevente } from './engine.js';
+import { $, $$, toast, section, row, icon } from './ui.js';
 
 const PROFILS = { acheteur: 'Acheteur', vendeur: 'Vendeur', investisseur: 'Investisseur', courtier: 'Courtier immobilier' };
 const profilSelect = (cur) => `<select id="profil">${Object.entries(PROFILS).map(([k, v]) => `<option value="${k}" ${k === cur ? 'selected' : ''}>${v}</option>`).join('')}</select>`;
@@ -92,11 +94,70 @@ export async function pageFavoris(ctx) {
   if (!auth.getUser()) { ctx.navigate('#/compte'); return; }
   const list = await auth.getFavoris();
   ctx.page(`<h1>Mes favoris</h1>
-    ${list.length ? `<div class="list">${list.map((f) => `
-      <a class="list-item" href="#/u/${encodeURIComponent(f.id)}@${f.lat},${f.lon}">
-        <span><b>${esc(f.adr)}</b><small>${esc(f.type)} · ${esc(f.muni)} · ajouté le ${date(f.ajoute)}</small></span>
-        <span class="li-v">${kmoney(f.valeur)}</span></a>`).join('')}</div>`
+    ${list.length ? `<p class="lead">Cochez de 2 à 4 propriétés pour les comparer côte à côte.</p>
+      <div class="list">${list.map((f, i) => `
+      <div class="list-item fav-row">
+        <input type="checkbox" class="cmp" data-i="${i}" aria-label="Comparer">
+        <a href="#/u/${encodeURIComponent(f.id)}@${f.lat},${f.lon}">
+          <span><b>${esc(f.adr)}</b><small>${esc(f.type)} · ${esc(f.muni)} · ajouté le ${date(f.ajoute)}</small></span></a>
+        <span class="li-v">${kmoney(f.valeur)}</span></div>`).join('')}</div>
+      <button class="btn primary" id="cmp-go" disabled>${icon('compare')} Comparer</button>
+      <div id="cmp-out"></div>`
     : '<p class="empty">Aucun favori pour l\'instant. Touchez l\'étoile sur la fiche d\'une propriété.</p>'}`);
+  const boxes = $$('.cmp');
+  const go = $('#cmp-go');
+  boxes.forEach((b) => b.addEventListener('change', () => {
+    const n = boxes.filter((x) => x.checked).length;
+    go.disabled = n < 2 || n > 4;
+  }));
+  go?.addEventListener('click', async () => {
+    const chosen = boxes.filter((x) => x.checked).map((x) => list[+x.dataset.i]);
+    $('#cmp-out').innerHTML = '<p class="loading">Calcul de la comparaison…</p>';
+    $('#cmp-out').innerHTML = await compareHtml(ctx.meta, chosen);
+    $('#cmp-out').scrollIntoView({ behavior: 'smooth' });
+  });
+}
+
+async function compareHtml(meta, favs) {
+  const rows = [];
+  for (const f of favs) {
+    await unitsAround(f.lat, f.lon, 0);
+    const u = getUnit(f.id);
+    if (!u) continue;
+    const m = await loadMuni(u.muni);
+    const e = estimate(u, m, meta);
+    const ts = m.types?.[u.t];
+    const pc = ts ? percentile(e.valeur, ts.hist) : null;
+    const loyer = loyerEstime(u, m);
+    const brut = loyer ? (12 * loyer * Math.max(1, u.lg || 1) / e.valeur) * 100 : null;
+    rows.push({ u, m, e, pc, loyer, brut, rv: indiceRevente(u, m, pc) });
+  }
+  if (rows.length < 2) return '<p class="empty">Données introuvables pour ces propriétés.</p>';
+  const best = (vals, higher = true) => {
+    const v = vals.filter((x) => x != null);
+    return v.length ? (higher ? Math.max(...v) : Math.min(...v)) : null;
+  };
+  const line = (label, vals, fmt, higher) => {
+    const b = higher === undefined ? null : best(vals, higher);
+    return `<tr><th>${esc(label)}</th>${vals.map((v) => `<td class="${b != null && v === b ? 'win' : ''}">${v == null ? '—' : fmt(v)}</td>`).join('')}</tr>`;
+  };
+  const m2 = rows.map((r) => (r.u.aire ? r.e.valeur / r.u.aire : null));
+  return `<section class="card"><h3>Comparaison</h3><div class="cmp-wrap"><table class="cmp-table">
+    <tr><th></th>${rows.map((r) => `<th>${esc(r.u.adr)}<small>${esc(r.m.nom)}</small></th>`).join('')}</tr>
+    ${line('Valeur estimée', rows.map((r) => r.e.valeur), money)}
+    ${line('Fourchette', rows.map((r) => `${kmoney(r.e.bas)} – ${kmoney(r.e.haut)}`), (x) => x)}
+    ${line('Type', rows.map((r) => meta.typeLabels[r.u.t]), (x) => x)}
+    ${line('Année', rows.map((r) => r.u.an), (x) => x, true)}
+    ${line('Aire habitable (m²)', rows.map((r) => r.u.aire), num, true)}
+    ${line('Prix au m²', m2, (x) => `${num(x)} $`, false)}
+    ${line('Terrain (m²)', rows.map((r) => r.u.ter), num, true)}
+    ${line('Logements', rows.map((r) => r.u.lg), (x) => x)}
+    ${line('Centile local', rows.map((r) => r.pc), (x) => `${x}e`)}
+    ${line('Tendance municipale / an', rows.map((r) => r.m.marche.g * 100), (x) => signedPct(x), true)}
+    ${line('Loyer de référence / log.', rows.map((r) => r.loyer), money)}
+    ${line('Rendement brut estimé', rows.map((r) => r.brut), (x) => pct(x), true)}
+    ${line('Facilité de revente', rows.map((r) => r.rv?.score), (x) => `${x}/100`, true)}
+  </table></div><p class="note">En vert : la meilleure valeur de la ligne. Estimations statistiques indicatives.</p></section>`;
 }
 
 export function pageTarifs(ctx) {

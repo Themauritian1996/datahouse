@@ -10,6 +10,7 @@ import { histogram, gauge, meter, rangeBar } from './charts.js';
 import { money, kmoney, pct, signedPct, num, num1, dist, esc, date } from './format.js';
 import { $, $$, kpi, row, section, field, val, icon, toast } from './ui.js';
 import * as auth from './auth.js';
+import { synthese, pdfReport, saveFile, shareLink, comparablesCsv, isNative } from './report.js';
 
 const LIENS = { 1: 'Détaché', 2: 'Jumelé', 3: 'En rangée (bout)', 4: 'En rangée', 5: 'Intégré (copropriété)' };
 const TABS = {
@@ -81,7 +82,9 @@ export async function renderUnit(ctx, id, coords) {
       <h2>${esc(unit.adr || 'Adresse non inscrite')}</h2>
       <div class="sh-actions">
         <button class="btn icon-btn" id="fav" title="Ajouter aux favoris" aria-label="Favori">${icon('star')}</button>
-        <button class="btn icon-btn" id="print" title="Rapport imprimable" aria-label="Rapport">${icon('print')}</button>
+        <button class="btn icon-btn" id="share" title="Partager" aria-label="Partager">${icon('share')}</button>
+        <button class="btn" id="pdf" title="Télécharger le rapport PDF">${icon('download')}<span>Rapport PDF</span></button>
+        ${isNative() ? '' : `<button class="btn icon-btn" id="print" title="Imprimer" aria-label="Imprimer">${icon('print')}</button>`}
       </div>
     </div>`;
   const hero = `
@@ -136,6 +139,10 @@ export async function renderUnit(ctx, id, coords) {
     }
   });
   auth.getFavoris().then((l) => $('#fav', body)?.classList.toggle('on', l.some((x) => x.id === unit.id)));
+  $('#share', body).addEventListener('click', async () => {
+    const r = await shareLink(`${unit.adr} — ${CONFIG.appName}`, `Valeur estimée : ${money(est.valeur)}`);
+    if (r === 'copie') toast('Lien copié dans le presse-papiers.');
+  });
 
   const gated = $('#gated', body);
   if (!user) {
@@ -144,7 +151,7 @@ export async function renderUnit(ctx, id, coords) {
       <p>Comparables, coûts d'achat, stratégie de vente, rendement locatif, commodités du secteur et facilité de revente.</p>
       <a class="btn primary" href="#/compte?inscription">Créer un compte gratuit</a>
       <a class="btn ghost" href="#/compte">J'ai déjà un compte</a></section>`;
-    $('#print', body).addEventListener('click', () => ctx.navigate('#/compte'));
+    for (const id of ['#print', '#pdf']) $(id, body)?.addEventListener('click', () => { toast('Créez un compte gratuit pour obtenir le rapport.'); ctx.navigate('#/compte?inscription'); });
     return;
   }
   const quota = await auth.useAnalysis(unit.id);
@@ -166,7 +173,8 @@ export async function renderUnit(ctx, id, coords) {
       </div>
       ${compM2 && m2 ? `<p class="lead">Prix au m² des comparables : <b>${num(compM2)} $</b> (cette propriété : ${num(m2)} $,
         ${signedPct(((m2 - compM2) / compM2) * 100, 0)}).</p>` : ''}`,
-  { note: 'Valeurs estimées par la même méthode, à partir du rôle d\'évaluation. Ce ne sont pas des prix de vente.' }) : '';
+  { note: 'Valeurs estimées par la même méthode, à partir du rôle d\'évaluation. Ce ne sont pas des prix de vente. '
+    + '<a href="#" id="csv">Exporter en CSV</a>' }) : '';
 
   const st = {
     prix: est.valeur, misePct: CONFIG.defauts.misePct, taux: meta.hypotheque?.tauxAffiche5ans || 5,
@@ -178,7 +186,8 @@ export async function renderUnit(ctx, id, coords) {
     assurances: CONFIG.defauts.assuranceParLogement * Math.max(1, unit.lg || 1), gestion: 0,
   };
   const order = tabOrder(user.profil);
-  gated.innerHTML = `${compsHtml}
+  const resume = section('Synthèse', `<p class="synth">${esc(synthese({ unit, muni, est, pc, comps, st, meta }))}</p>`);
+  gated.innerHTML = `${resume}${compsHtml}
     <nav class="tabs" role="tablist">${order.map((k, i) => `<button role="tab" class="tab${i ? '' : ' on'}" data-tab="${k}">${TABS[k]}</button>`).join('')}</nav>
     <div id="tabpanel" class="tabpanel"></div>
     ${Number.isFinite(quota.restant) ? `<p class="note center">Analyses restantes ce mois-ci : ${quota.restant}</p>` : ''}`;
@@ -191,9 +200,33 @@ export async function renderUnit(ctx, id, coords) {
   $$('.tab', body).forEach((t) => t.addEventListener('click', () => show(t.dataset.tab)));
   show(order[0]);
 
-  $('#print', body).addEventListener('click', () => {
-    if (!auth.forfait().rapports) { toast('Les rapports imprimables font partie du forfait Pro.', 'warn'); ctx.navigate('#/tarifs'); return; }
-    printReport(ctxTab, user);
+  $('#csv', body)?.addEventListener('click', async (e) => {
+    e.preventDefault();
+    await saveFile(comparablesCsv(unit, comps), 'DataHouse-comparables.csv', 'Comparables');
+  });
+  const needPro = () => {
+    if (auth.forfait().rapports) return false;
+    toast('Les rapports PDF et imprimables font partie du forfait Pro.', 'warn');
+    ctx.navigate('#/tarifs');
+    return true;
+  };
+  $('#print', body)?.addEventListener('click', () => { if (!needPro()) printReport(ctxTab, user); });
+  $('#pdf', body).addEventListener('click', async () => {
+    if (needPro()) return;
+    const btn = $('#pdf', body);
+    btn.disabled = true;
+    btn.querySelector('span').textContent = 'Préparation…';
+    try {
+      const { blob, filename } = await pdfReport(ctxTab, auth.getUser(), auth.forfait());
+      await saveFile(blob, filename, 'Rapport DataHouse');
+      toast('Rapport PDF prêt.');
+    } catch (err) {
+      console.error(err);
+      toast('Impossible de générer le PDF pour le moment.', 'warn');
+    } finally {
+      btn.disabled = false;
+      btn.querySelector('span').textContent = 'Rapport PDF';
+    }
   });
 }
 
@@ -329,7 +362,8 @@ const RENDER = {
     });
   },
 
-  async secteur(panel, { unit, muni, est, meta }) {
+  async secteur(panel, ctxT) {
+    const { unit, muni, est, meta } = ctxT;
     const c = muni.recensement || {};
     panel.innerHTML = `
       <div id="s-pc">${section('Avantages et inconvénients', '<p class="loading">Analyse des commodités autour de l\'adresse…</p>')}</div>
@@ -346,6 +380,7 @@ const RENDER = {
       <div id="s-env"></div>
       ${newsHtml(muni)}`;
     const osm = await environs(unit.lat, unit.lon);
+    ctxT.osm = osm;
     const pcs = prosCons({ muni, meta, unit, osm, est });
     $('#s-pc', panel).innerHTML = section('Avantages et inconvénients', prosConsHtml(pcs),
       { note: osm ? 'Commodités : OpenStreetMap (contributeurs). Vérifiez sur place.' : 'Commodités indisponibles pour le moment (service OpenStreetMap).' });
@@ -407,6 +442,7 @@ function printReport({ unit, muni, est, meta, st, comps, pc }, user) {
       <small>Fourchette : ${money(est.bas)} à ${money(est.haut)}</small></div>
       <div>${row('Valeur au rôle', money(unit.vr))}${row('Année', unit.an || '—')}${row('Aire habitable', unit.aire ? `${num(unit.aire)} m²` : '—')}
       ${row('Terrain', unit.ter ? `${num(unit.ter)} m²` : '—')}${row('Logements', unit.lg || '—')}${pc != null ? row('Centile local', `${pc}e`) : ''}</div></div>
+    <h2>Synthèse</h2><p>${esc(synthese({ unit, muni, est, pc, comps, st, meta }))}</p>
     <h2>Comparables</h2><table><tr><th>Adresse</th><th>Distance</th><th>Aire</th><th>Estimation</th></tr>
       ${comps.map((c) => `<tr><td>${esc(c.adr)}</td><td>${dist(c.d)}</td><td>${c.aire ? `${num(c.aire)} m²` : '—'}</td><td>${money(c.est)}</td></tr>`).join('')}</table>
     <div class="pr-cols">

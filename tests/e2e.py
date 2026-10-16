@@ -111,6 +111,7 @@ def run(pw, viewport, name, dark=False):
     first = page.inner_text(".tab.on")
     assert first == "Investisseur", first
     page.screenshot(path=SHOTS / f"{name}-06-investisseur.png", full_page=False)
+    assert "est estimée à environ" in page.inner_text(".synth"), page.inner_text(".synth")
     page.fill("#i-loyer", "1450")
     page.wait_for_timeout(200)
     assert "Liquidités" in page.inner_text("#i-out")
@@ -138,6 +139,15 @@ def run(pw, viewport, name, dark=False):
     page.screenshot(path=SHOTS / f"{name}-08-forfaits.png")
     page.go_back()
     page.wait_for_selector(".sheet.open .tabs", timeout=10000)
+    with page.expect_download(timeout=30000) as dl:
+        page.click("#pdf")
+    pdf = dl.value
+    path = SHOTS / f"{name}-rapport.pdf"
+    pdf.save_as(path)
+    assert path.stat().st_size > 20000, path.stat().st_size
+    with page.expect_download(timeout=10000) as dl2:
+        page.click("#csv")
+    assert dl2.value.suggested_filename.endswith(".csv")
     page.click("#print")
     page.wait_for_function("window.__printed === true", timeout=5000)
     page.emulate_media(media="print")
@@ -154,10 +164,18 @@ def run(pw, viewport, name, dark=False):
     page.screenshot(path=SHOTS / f"{name}-10-immeuble.png")
     page.click(".list-item >> nth=1")
     page.wait_for_selector(".sheet .hero")
+    page.wait_for_timeout(500)
+    page.click("#fav")
+    page.wait_for_timeout(400)
 
     # Favoris et méthodologie
     page.evaluate("location.hash = '#/favoris'")
     page.wait_for_selector(".page .list-item")
+    for b in page.query_selector_all(".cmp")[:2]:
+        b.check()
+    page.click("#cmp-go")
+    page.wait_for_selector(".cmp-table")
+    page.screenshot(path=SHOTS / f"{name}-10b-comparaison.png", full_page=True)
     page.evaluate("location.hash = '#/methodo'")
     page.wait_for_selector(".formula")
     page.screenshot(path=SHOTS / f"{name}-11-methodo.png")

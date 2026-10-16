@@ -1,0 +1,60 @@
+name: APK Android
+
+on:
+  push:
+    branches: [main]
+    paths: ['mobile/**', '.github/workflows/apk.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Projet Android
+        working-directory: mobile
+        run: |
+          set -o pipefail
+          exec > >(tee -a "$RUNNER_TEMP/apk.log") 2>&1
+          npm install --no-audit --no-fund
+          npx cap add android
+          npx capacitor-assets generate --android --iconBackgroundColor '#0b0b0b' --splashBackgroundColor '#0b0b0b' || echo "icônes : génération partielle"
+          # Géolocalisation (bouton « ma position » de la carte)
+          sed -i 's#<uses-permission android:name="android.permission.INTERNET" />#<uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />\n    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />#' android/app/src/main/AndroidManifest.xml
+          # Numéro de version = numéro de compilation
+          sed -i -E "s/versionCode [0-9]+/versionCode ${{ github.run_number }}/; s/versionName \"[^\"]+\"/versionName \"1.${{ github.run_number }}\"/" android/app/build.gradle
+          # Même signature à chaque version (mises à jour par-dessus l'ancienne)
+          mkdir -p ~/.android && cp debug.keystore ~/.android/debug.keystore
+          npx cap sync android
+      - name: Compilation
+        working-directory: mobile/android
+        run: |
+          set -o pipefail
+          exec > >(tee -a "$RUNNER_TEMP/apk.log") 2>&1
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
+          cp app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/DataHouse.apk"
+          ls -lh "$GITHUB_WORKSPACE/DataHouse.apk"
+      - name: Publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view apk >/dev/null 2>&1 || gh release create apk --title "Application Android" --notes "Téléchargez DataHouse.apk sur votre téléphone Android, puis ouvrez le fichier pour l'installer (autorisez l'installation depuis cette source si Android le demande)."
+          gh release upload apk DataHouse.apk --clobber
+          echo "### APK publié : version 1.${{ github.run_number }}" >> "$GITHUB_STEP_SUMMARY"
+      - name: Résumé de l'erreur
+        if: failure()
+        run: |
+          grep -v -E "^\s*$" "$RUNNER_TEMP/apk.log" | grep -E -i "error|failed|exception|what went wrong|>|could not" | tail -n 40 | python3 -c "import sys; t=sys.stdin.read(); print('::error title=APK::' + t.replace('%','%25').replace('\r','').replace('\n','%0A'))"
+          tail -n 30 "$RUNNER_TEMP/apk.log" | python3 -c "import sys; t=sys.stdin.read(); print('::warning title=Fin du journal::' + t.replace('%','%25').replace('\r','').replace('\n','%0A'))"
