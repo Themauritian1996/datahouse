@@ -48,7 +48,12 @@ jobs:
         run: |
           ARGS=""
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.nouvelles }}" = "false" ]; then ARGS="--no-news"; fi
-          python build_data.py $ARGS
+          set -o pipefail
+          python build_data.py $ARGS 2>&1 | tee "$RUNNER_TEMP/construction.log"
+      - name: Résumé de l'erreur (lisible dans les annotations)
+        if: failure()
+        run: |
+          tail -n 60 "$RUNNER_TEMP/construction.log" | grep -v UserWarning | python -c "import sys; t=sys.stdin.read(); print('::error title=Journal de construction::' + t.replace('%','%25').replace('\r','').replace('\n','%0A'))"
       - name: Archive
         run: |
           tar -czf donnees.tar.gz -C pipeline/_out data
