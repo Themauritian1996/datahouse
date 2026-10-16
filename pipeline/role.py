@@ -61,7 +61,9 @@ def _layer(layers: list[str], prefix: str) -> str:
 
 
 def _num(s: pd.Series) -> pd.Series:
-    return pd.to_numeric(s.astype("string").str.replace(",", ".", regex=False), errors="coerce")
+    """Nombre en float64 numpy (NaN, jamais pd.NA) quel que soit le type d'origine."""
+    v = pd.to_numeric(s.astype("string").str.replace(",", ".", regex=False), errors="coerce")
+    return v.astype("float64")
 
 
 def _str(s: pd.Series) -> pd.Series:
@@ -113,10 +115,11 @@ def load_role(gpkg=None, munis=None) -> pd.DataFrame:
         ev[c] = _num(ev[c]) if c in ev else np.nan
     ev["t"] = classify(ev["cubf"].to_numpy(), ev["lg"].to_numpy(), ev["li"].to_numpy())
     ev = ev[(ev["t"] != "") & (ev["vr"] > 1000)].copy()
-    ev["id"] = _str(ev["id"])
+    ev["id"] = _str(ev["id"]).astype(object)
     ev["muni"] = ev["muni"].map(muni_code)
     ev["dateRef"] = ev["dateRef"].astype("string").str[:10] if "dateRef" in ev else None
-    ev["roleAn"] = pd.to_numeric(ev["dateRef"].str[:4], errors="coerce") + 2
+    ev["roleAn"] = _num(ev["dateRef"].str[:4]) + 2
+    ev["dateRef"] = ev["dateRef"].astype(object).where(ev["dateRef"].notna(), None)
     log.info("unités résidentielles : %d", len(ev))
     keep = set(ev["id"])
 
@@ -127,7 +130,7 @@ def load_role(gpkg=None, munis=None) -> pd.DataFrame:
     geoms = shapely.from_wkb(np.asarray(tbl.column(geom_col).to_pylist(), dtype=object))
     coords, idx = shapely.get_coordinates(geoms, return_index=True)
     first = np.unique(idx, return_index=True)[1]
-    pts = pd.DataFrame({"id": pd.Series(ids[idx[first]]).astype("string").str.strip(),
+    pts = pd.DataFrame({"id": pd.Series(ids[idx[first]]).astype(str).str.strip(),
                         "lon": coords[first, 0].round(5), "lat": coords[first, 1].round(5)})
     pts = pts[pts["id"].isin(keep)].drop_duplicates("id")
     log.info("positions trouvées : %d", len(pts))
@@ -146,7 +149,8 @@ def load_role(gpkg=None, munis=None) -> pd.DataFrame:
     adr = pd.Series(build_address(ad).to_numpy(), index=ad["id_provinc"].to_numpy())
 
     units = ev.merge(pts, on="id", how="inner")
-    units["adr"] = units["id"].map(adr).fillna("")
+    units["adr"] = units["id"].map(adr).fillna("").astype(object)
+    units["muni"] = units["muni"].astype(object)
     # Coordonnées plausibles pour le Québec seulement.
     units = units[units["lat"].between(44.9, 63) & units["lon"].between(-80, -57)]
     log.info("rôle : %d unités résidentielles géolocalisées", len(units))

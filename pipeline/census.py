@@ -75,7 +75,7 @@ def load_population_table(source: Path | None = None) -> dict[str, dict]:
 def load_census(source: Path | None = None) -> dict[str, dict]:
     if source is None:
         try:
-            source = download(URL, WORK / "census_qc_csd.bin", timeout=300)
+            source = download(URL, WORK / "census_qc_csd.bin", timeout=300, retries=1)
         except Exception as exc:  # noqa: BLE001
             log.warning("profil du recensement inaccessible (%s) ; repli sur le tableau de population", exc)
             return load_population_table()

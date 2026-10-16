@@ -39,6 +39,10 @@ def lin(x, x0, x1):
 
 def muni_growth(units: pd.DataFrame) -> pd.DataFrame:
     """Croissance médiane annualisée rôle antérieur -> rôle actuel, par municipalité."""
+    units = units.copy()
+    for c in ("vr", "va", "roleAn"):
+        if c in units:
+            units[c] = pd.to_numeric(units[c], errors="coerce").astype("float64")
     ok = units[(units["va"] > 1000) & (units["t"].isin(["U", "C", "P"]))]
     ratio = (ok["vr"] / ok["va"]).clip(0.5, 3)
     med = ratio.groupby(ok["muni"]).median()
@@ -67,7 +71,8 @@ def market_factors(units: pd.DataFrame, rfu: dict[int, dict], today: date, mrc_o
         g, src = None, None
         if fc and fcp and rec["roleAnnee"] and cur_y and rec["roleAnnee"] < cur_y:
             g, src = fc / fcp - 1, "facteurs comparatifs %d/%d" % (prev_y, cur_y)
-        elif code in gr.index and gr.loc[code, "n3"] >= 20:
+        elif code in gr.index and pd.notna(gr.loc[code, "n3"]) and gr.loc[code, "n3"] >= 20 \
+                and pd.notna(gr.loc[code, "ratio3"]):
             g, src = gr.loc[code, "ratio3"] ** (1 / 3) - 1, "rôle actuel vs rôle antérieur"
         rec.update(fc=fc, fcPrec=fcp, gBrut=g, gSource=src,
                    dateRef=date_ref.get(code) if len(date_ref) else None)

@@ -24,7 +24,7 @@ def _from_sda() -> gpd.GeoDataFrame:
          or pick_resource(res, ["20 000"], fmt="SHP"))
     if r is None:
         raise RuntimeError("Découpages administratifs introuvables")
-    z = download(r["url"], WORK / "sda.zip", timeout=600)
+    z = download(r["url"], WORK / "sda.zip", timeout=600, retries=1)
     folder = unzip(z, WORK / "sda")
     shps = sorted(folder.rglob("*.shp"), key=lambda p: ("munic" not in p.name.lower(), len(p.name)))
     if not shps:
@@ -51,7 +51,7 @@ def _from_sda() -> gpd.GeoDataFrame:
 
 
 def _from_statcan() -> gpd.GeoDataFrame:
-    z = download(CSD_URL, WORK / "lcsd000b21a_e.zip")
+    z = download(CSD_URL, WORK / "lcsd000b21a_e.zip", retries=1)
     folder = unzip(z, WORK / "csd")
     return gpd.read_file(next(folder.rglob("*.shp")))
 
