@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>DataHouse — Le prix juste, chiffres en main.</title>
   <meta name="description" content="Estimation du prix des propriétés partout au Québec à partir des données publiques : valeur, comparables, loyers, rendement, secteur et facilité de revente.">
-  <meta name="theme-color" content="#0b0b0b">
+  <meta name="theme-color" content="#16181d">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="img/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="img/icon-192.png">
@@ -26,6 +26,11 @@
       <input id="q" type="search" placeholder="Adresse, ville ou quartier" autocomplete="off" aria-label="Rechercher une adresse ou une ville">
       <div id="results" class="results" hidden></div>
     </div>
+    <nav class="topnav" aria-label="Navigation principale">
+      <a href="#/carte" id="nav-carte">Carte</a>
+      <a href="#/tarifs" class="nav-x">Forfaits</a>
+      <a href="#/methodo" class="nav-x">Méthode</a>
+    </nav>
     <button class="btn icon-btn" id="theme" title="Thème" aria-label="Changer de thème"><svg class="ic" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg></button>
     <button class="btn icon-btn" id="account" aria-label="Compte"></button>
     <nav id="menu" class="menu">
@@ -59,6 +64,7 @@
     <div class="sheet-body"></div>
   </aside>
 
+  <section id="home" class="home" hidden></section>
   <section id="page" class="page" hidden></section>
   <div id="rapport" class="print"></div>
   <div id="toast" class="toast" role="status"></div>

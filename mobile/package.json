@@ -9,7 +9,8 @@
     "@capacitor/filesystem": "^7.0.0",
     "@capacitor/share": "^7.0.0",
     "@capacitor/splash-screen": "^7.0.0",
-    "@capacitor/status-bar": "^7.0.0"
+    "@capacitor/status-bar": "^7.0.0",
+    "@capacitor/text-zoom": "^7.0.0"
   },
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",

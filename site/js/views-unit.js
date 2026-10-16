@@ -367,15 +367,17 @@ const RENDER = {
     const c = muni.recensement || {};
     panel.innerHTML = `
       <div id="s-pc">${section('Avantages et inconvénients', '<p class="loading">Analyse des commodités autour de l\'adresse…</p>')}</div>
-      ${section(`Portrait de ${muni.nom}`, `<div class="grid2">
-        ${row('Population (2021)', num(c.pop2021))}
-        ${row('Croissance 2016-2021', signedPct(c.croissancePop))}
-        ${row('Revenu médian des ménages (2020)', money(c.revenuMenage))}
-        ${row('Propriétaires', pct(c.pctProprio, 0))}
-        ${row('Âge moyen', num1(c.ageMoyen))}
-        ${row('65 ans et plus', pct(c.pct65, 0))}
-        ${row('Ont déménagé en 1 an', pct(c.pctDemenage1an, 0))}
-        ${row('Densité', c.densite ? `${num(c.densite)} hab./km²` : '—')}
+      ${section(`Portrait de ${muni.nom}`, `<div class="grid2">${[
+        ['Population (2021)', c.pop2021, num(c.pop2021)],
+        ['Croissance 2016-2021', c.croissancePop, signedPct(c.croissancePop)],
+        ['Revenu médian des ménages (2020)', c.revenuMenage, money(c.revenuMenage)],
+        ['Propriétaires', c.pctProprio, pct(c.pctProprio, 0)],
+        ['Locataires au-delà de 30 % du revenu', c.pctInabordableLocataire, pct(c.pctInabordableLocataire, 0)],
+        ['Âge moyen', c.ageMoyen, num1(c.ageMoyen)],
+        ['65 ans et plus', c.pct65, pct(c.pct65, 0)],
+        ['Ont déménagé en 1 an', c.pctDemenage1an, pct(c.pctDemenage1an, 0)],
+        ['Densité', c.densite, c.densite ? `${num(c.densite)} hab./km²` : '—'],
+      ].filter((r) => r[1] != null).map(([l, , v]) => row(l, v)).join('')}
       </div>`, { note: 'Source : Statistique Canada, Recensement de 2021.' })}
       <div id="s-env"></div>
       ${newsHtml(muni)}`;

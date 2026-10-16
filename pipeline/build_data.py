@@ -49,9 +49,10 @@ SOURCES = [
      "licence": "CC-BY 4.0", "url": "https://www.donneesquebec.ca/recherche/dataset/roles-d-evaluation-fonciere-du-quebec"},
     {"nom": "Richesse foncière uniformisée (facteurs comparatifs)", "editeur": "MAMH — Données Québec",
      "licence": "CC-BY 4.0", "url": "https://www.donneesquebec.ca/recherche/dataset/richesse-fonciere-uniformisee"},
-    {"nom": "Profil du recensement 2021, subdivisions de recensement", "editeur": "Statistique Canada",
+    {"nom": "Recensement 2021 par municipalité : population (98-10-0002), revenu des ménages (98-10-0057), "
+     "mode d'occupation et abordabilité (98-10-0259), âge (98-10-0022)", "editeur": "Statistique Canada",
      "licence": "Licence du gouvernement ouvert — Canada",
-     "url": "https://www150.statcan.gc.ca/n1/fr/catalogue/98-401-X2021020"},
+     "url": "https://www150.statcan.gc.ca/t1/tbl1/fr/tv.action?pid=9810005701"},
     {"nom": "Fichiers des limites des subdivisions de recensement 2021", "editeur": "Statistique Canada",
      "licence": "Licence du gouvernement ouvert — Canada",
      "url": "https://www12.statcan.gc.ca/census-recensement/2021/geo/sip-pis/boundary-limites/index2021-fra.cfm"},

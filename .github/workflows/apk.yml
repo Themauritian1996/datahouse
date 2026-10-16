@@ -29,7 +29,7 @@ jobs:
           exec > >(tee -a "$RUNNER_TEMP/apk.log") 2>&1
           npm install --no-audit --no-fund
           npx cap add android
-          npx capacitor-assets generate --android --iconBackgroundColor '#0b0b0b' --splashBackgroundColor '#0b0b0b' || echo "icônes : génération partielle"
+          npx capacitor-assets generate --android --iconBackgroundColor '#16181D' --splashBackgroundColor '#16181D' || echo "icônes : génération partielle"
           # Géolocalisation (bouton « ma position » de la carte)
           sed -i 's#<uses-permission android:name="android.permission.INTERNET" />#<uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />\n    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />#' android/app/src/main/AndroidManifest.xml
           # Numéro de version = numéro de compilation

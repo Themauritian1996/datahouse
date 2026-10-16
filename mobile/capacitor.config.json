@@ -4,14 +4,30 @@
   "webDir": "www",
   "server": {
     "url": "https://themauritian1996.github.io/datahouse/",
-    "allowNavigation": ["themauritian1996.github.io", "*.openfreemap.org", "photon.komoot.io", "*.googleapis.com", "*.firebaseapp.com", "www.gstatic.com"],
+    "allowNavigation": [
+      "themauritian1996.github.io",
+      "*.openfreemap.org",
+      "photon.komoot.io",
+      "*.googleapis.com",
+      "*.firebaseapp.com",
+      "www.gstatic.com"
+    ],
     "errorPath": "hors-ligne.html"
   },
   "android": {
-    "backgroundColor": "#0b0b0b"
+    "backgroundColor": "#16181D",
+    "adjustMarginsForEdgeToEdge": "force"
   },
   "plugins": {
-    "SplashScreen": { "launchShowDuration": 800, "backgroundColor": "#0b0b0b", "showSpinner": false },
-    "StatusBar": { "backgroundColor": "#0b0b0b", "style": "DARK" }
+    "SplashScreen": {
+      "launchShowDuration": 800,
+      "backgroundColor": "#16181D",
+      "showSpinner": false
+    },
+    "StatusBar": {
+      "backgroundColor": "#16181D",
+      "style": "DARK",
+      "overlaysWebView": false
+    }
   }
 }

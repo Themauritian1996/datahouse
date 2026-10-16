@@ -47,16 +47,20 @@ export async function renderMuni(ctx, code) {
       <div class="gauge-wrap">${gauge(liq.score, { label: 'Facilité de revente' })}<p class="lead">Indice expérimental (0 à 100) : taille et dynamisme du marché, mobilité et abordabilité.</p></div>
       ${Object.entries(labels).map(([k, l]) => `<div class="mrow"><span>${l}</span>${meter(liq.composantes?.[k])}</div>`).join('')}`)}
     ${section('Avantages et inconvénients', prosConsHtml(prosCons({ muni, meta })))}
-    ${section('Démographie (recensement 2021)', `<div class="grid2">
-      ${row('Population', num(c.pop2021))}
-      ${row('Croissance 2016-2021', signedPct(c.croissancePop))}
-      ${row('Revenu médian des ménages', money(c.revenuMenage))}
-      ${row('Propriétaires', pct(c.pctProprio, 0))}
-      ${row('Âge moyen', num1(c.ageMoyen))}
-      ${row('Ont déménagé en 1 an', pct(c.pctDemenage1an, 0))}
-      ${row('Valeur déclarée médiane (2021)', money(c.valeurDeclaree2021))}
-      ${row('Prix / revenu', muni.ratioPrixRevenu ? num1(muni.ratioPrixRevenu) : '—')}
-    </div>`)}
+    ${section('Démographie (recensement 2021)', `<div class="grid2">${[
+      ['Population', c.pop2021, num(c.pop2021)],
+      ['Croissance 2016-2021', c.croissancePop, signedPct(c.croissancePop)],
+      ['Revenu médian des ménages (2020)', c.revenuMenage, money(c.revenuMenage)],
+      ['Hausse du revenu 2015-2020', c.croissanceRevenu, signedPct(c.croissanceRevenu)],
+      ['Propriétaires', c.pctProprio, pct(c.pctProprio, 0)],
+      ['Locataires au-delà de 30 % du revenu', c.pctInabordableLocataire, pct(c.pctInabordableLocataire, 0)],
+      ['Âge moyen', c.ageMoyen, num1(c.ageMoyen)],
+      ['65 ans et plus', c.pct65, pct(c.pct65, 0)],
+      ['Ont déménagé en 1 an', c.pctDemenage1an, pct(c.pctDemenage1an, 0)],
+      ['Valeur déclarée médiane (2021)', c.valeurDeclaree2021, money(c.valeurDeclaree2021)],
+      ['Prix / revenu', muni.ratioPrixRevenu, num1(muni.ratioPrixRevenu)],
+    ].filter((r) => r[1] != null).map(([l, , v]) => row(l, v)).join('')}
+    </div>`, { note: 'Source : Statistique Canada, Recensement de 2021.' })}
     ${newsHtml(muni)}
     ${section('Méthode', `
       ${row('Rôle d\'évaluation en vigueur', muni.role.annee || '—')}

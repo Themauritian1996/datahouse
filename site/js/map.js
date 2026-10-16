@@ -59,6 +59,8 @@ export class Carte {
     this.map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
     this.map.addControl(new maplibregl.GeolocateControl({ positionOptions: { enableHighAccuracy: true } }), 'bottom-right');
     this.map.on('load', () => this.applyBase());
+    // L'attribution reste repliée (icône ⓘ) pour ne pas masquer la carte sur téléphone.
+    this.map.once('idle', () => this.map.getContainer().querySelector('.maplibregl-ctrl-attrib')?.classList.remove('maplibregl-compact-show'));
     this.map.on('style.load', () => this.addLayers());
     this.map.on('moveend', () => this.refreshUnits());
     this.map.on('click', (e) => this.onClick(e));

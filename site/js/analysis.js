@@ -104,6 +104,11 @@ export function prosCons({ muni, meta, unit, osm, est }) {
     if (c.pctProprio <= 45) add('+', `Forte proportion de locataires (${pct(100 - c.pctProprio, 0)}) : bassin locatif important.`, 'investisseur');
     else if (c.pctProprio >= 75) add('+', `Secteur majoritairement propriétaire (${pct(c.pctProprio, 0)}) : quartier généralement stable.`, 'acheteur');
   }
+  if (c.pctInabordableLocataire != null) {
+    if (c.pctInabordableLocataire >= 33) add('−', `${pct(c.pctInabordableLocataire, 0)} des locataires consacrent plus de 30 % de leur revenu au logement : marge limitée pour hausser les loyers.`, 'investisseur');
+    else if (c.pctInabordableLocataire <= 18) add('+', `Seulement ${pct(c.pctInabordableLocataire, 0)} des locataires dépassent 30 % de leur revenu en loyer : demande solvable.`, 'investisseur');
+  }
+  if (c.croissanceRevenu != null && c.croissanceRevenu >= 20) add('+', `Revenu des ménages en forte hausse (${signedPct(c.croissanceRevenu, 0)} de 2015 à 2020, en dollars constants).`);
   if (muni.rendementPlex != null) {
     if (muni.rendementPlex >= 6) add('+', `Rendement brut des plex élevé (≈ ${pct(muni.rendementPlex)}).`, 'investisseur');
     else if (muni.rendementPlex <= 4) add('−', `Rendement brut des plex faible (≈ ${pct(muni.rendementPlex)}) : misez sur la plus-value.`, 'investisseur');
