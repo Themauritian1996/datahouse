@@ -18,37 +18,15 @@ jobs:
           S = open(__import__('os').environ['GITHUB_STEP_SUMMARY'], 'a')
           def out(*a):
               t = ' '.join(str(x) for x in a); print(t); S.write(t + '\n')
-          ck = requests.get('https://www.donneesquebec.ca/recherche/api/3/action/package_show?id=roles-d-evaluation-fonciere-du-quebec').json()['result']['resources']
-          for r in ck:
-              out('RES|', r.get('name'), '|', r.get('format'), '|', r.get('url'))
-          idx = next(r for r in ck if 'Index des r' in r['name'] and '2026' in r['name'])
-          raw = requests.get(idx['url']).content
-          for enc in ('utf-8-sig', 'latin-1'):
-              try:
-                  df = pd.read_csv(io.BytesIO(raw), sep=None, engine='python', encoding=enc, dtype=str); break
-              except Exception: pass
-          out('INDEX colonnes', list(df.columns)); out(df.head(3).to_string())
-          url = next(v for v in df.iloc[:, -1] if str(v).startswith('http'))
-          for c in df.columns:
-              if df[c].astype(str).str.startswith('http').any(): url = df[c].astype(str)[df[c].astype(str).str.contains('Sutton|46058', regex=True)].head(1).tolist() or df[c].astype(str).head(1).tolist(); url = url[0]
-          out('XML exemple', url)
-          x = requests.get(url).content
-          if x[:2] == b'PK':
-              z = zipfile.ZipFile(io.BytesIO(x)); x = z.read(z.namelist()[0])
-          txt = x.decode('utf-8', 'replace')
-          out('XML longueur', len(txt)); out('```'); out(txt[:6000]); out('```')
           g = requests.get('https://donneesouvertes.affmunqc.net/role/ROLE2026_GEOPACKAGE.zip', stream=True)
           with open('g.zip', 'wb') as f:
               for ch in g.iter_content(1 << 20): f.write(ch)
-          z = zipfile.ZipFile('g.zip'); out('GPKG zip', z.namelist()); z.extractall('g')
+          z = zipfile.ZipFile('g.zip'); z.extractall('g')
           import glob; p = max(glob.glob('g/**/*.gpkg', recursive=True), key=lambda p: __import__('os').path.getsize(p))
-          for lyr in pyogrio.list_layers(p): out('COUCHE', lyr, pyogrio.read_info(p, layer=lyr[0]).get('crs'))
-          d = pyogrio.read_dataframe(p, max_features=5)
-          out(d.drop(columns='geometry').to_string()); out(d.geometry.head(3).to_wkt().tolist())
-          for t in ('98100002', '46100092'):
-              b = requests.get(f'https://www150.statcan.gc.ca/n1/tbl/csv/{t}-eng.zip').content
-              z = zipfile.ZipFile(io.BytesIO(b)); n = [n for n in z.namelist() if 'Meta' not in n][0]
-              tdf = pd.read_csv(z.open(n), dtype=str, encoding='utf-8-sig')
-              out('TABLE', t, list(tdf.columns)); out(tdf.head(4).to_string())
-              q = tdf[tdf['GEO'].str.contains('Qu', na=False)]
-              out('GEO Québec', q['GEO'].drop_duplicates().head(25).tolist())
+          for lyr in pyogrio.list_layers(p):
+              info = pyogrio.read_info(p, layer=lyr[0])
+              out('## COUCHE', lyr[0], '| entités', info.get('features'), '| champs', list(info['fields']))
+              d = pyogrio.read_dataframe(p, layer=lyr[0], max_features=4, read_geometry=False)
+              out('```'); out(d.to_string()); out('```')
+          d = pyogrio.read_dataframe(p, layer='b05v_unite_evaln_2026', read_geometry=False, where="code_mun = '66023'", max_features=3)
+          out('MONTREAL'); out('```'); out(d.T.to_string()); out('```')
