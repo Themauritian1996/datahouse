@@ -77,6 +77,7 @@ TABLES = {
     "98100057": "https://www150.statcan.gc.ca/n1/tbl/csv/98100057-eng.zip",  # revenu des ménages
     "98100259": "https://www150.statcan.gc.ca/n1/tbl/csv/98100259-eng.zip",  # logement selon le mode d'occupation
     "98100022": "https://www150.statcan.gc.ca/n1/tbl/csv/98100022-eng.zip",  # âge
+    "98100257": "https://www150.statcan.gc.ca/n1/tbl/csv/98100257-eng.zip",  # valeur des logements (propriétaires)
 }
 
 
@@ -206,7 +207,26 @@ def parse_age(source: Path) -> dict[str, dict]:
     return out
 
 
-PARSERS = {"98100057": parse_income, "98100259": parse_tenure, "98100022": parse_age}
+def parse_value(source: Path) -> dict[str, dict]:
+    """Valeur médiane des logements déclarée par les propriétaires (2021), tous types et maisons individuelles."""
+    df = _csd_rows(source)
+    df = _pick(df, **{"Age of primary household maintainer": "Total", "Presence of mortgage": "Total",
+                      "Number of bedrooms": "Total", "Statistics": "Number of private households",
+                      "Value (owner-estimated)": "Median value of dwelling"})
+    ct, cu = _col(df, "Total - Structural type"), _col(df, "Single-detached house")
+    out = {}
+    for _, r in df.iterrows():
+        d = {}
+        for col, k in ((ct, "valeurDeclaree2021"), (cu, "valeurUnifamiliale2021")):
+            v = pd.to_numeric(r.get(col), errors="coerce") if col else None
+            if v is not None and pd.notna(v) and v > 0:
+                d[k] = float(v)
+        if d and r["code"]:
+            out[r["code"]] = d
+    return out
+
+
+PARSERS = {"98100057": parse_income, "98100259": parse_tenure, "98100022": parse_age, "98100257": parse_value}
 
 
 def load_www150(sources: dict[str, Path] | None = None) -> dict[str, dict]:

@@ -50,7 +50,7 @@ SOURCES = [
     {"nom": "Richesse foncière uniformisée (facteurs comparatifs)", "editeur": "MAMH — Données Québec",
      "licence": "CC-BY 4.0", "url": "https://www.donneesquebec.ca/recherche/dataset/richesse-fonciere-uniformisee"},
     {"nom": "Recensement 2021 par municipalité : population (98-10-0002), revenu des ménages (98-10-0057), "
-     "mode d'occupation et abordabilité (98-10-0259), âge (98-10-0022)", "editeur": "Statistique Canada",
+     "mode d'occupation et abordabilité (98-10-0259), âge (98-10-0022), valeur des logements (98-10-0257)", "editeur": "Statistique Canada",
      "licence": "Licence du gouvernement ouvert — Canada",
      "url": "https://www150.statcan.gc.ca/t1/tbl1/fr/tv.action?pid=9810005701"},
     {"nom": "Fichiers des limites des subdivisions de recensement 2021", "editeur": "Statistique Canada",

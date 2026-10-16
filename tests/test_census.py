@@ -51,6 +51,17 @@ age = zip_csv(tmp / "a.zip", "98100022", ["REF_DATE", "GEO", "DGUID", "Census ye
     "Age (in single years), average age and median age (128)", "Coordinate", "Gender (3a):Total - Gender[1]", "Symbol",
     "Gender (3a):Men+[2]", "Symbol.1", "Gender (3a):Women+[3]", "Symbol.2"], age_rows)
 
+val = zip_csv(tmp / "v.zip", "98100257", ["REF_DATE", "GEO", "DGUID", "Age of primary household maintainer (9)",
+    "Presence of mortgage payments (3)", "Number of bedrooms (6)", "Statistics (3C)", "Value (owner-estimated) of dwelling (16)",
+    "Coordinate", "Structural type of dwelling (10):Total - Structural type of dwelling[1]", "Symbol",
+    "Structural type of dwelling (10):Single-detached house[2]", "Symbol.1"],
+    [["2021", "Montréal (2466023) V", G[0][1], "Total - Age of primary household maintainer", "Total - Presence of mortgage payments",
+      "Total - Number of bedrooms", st, lab, "1", v, "", vu, ""]
+     for st, lab, v, vu in [("Number of private households", "Median value of dwelling $", 500000, 548000),
+                            ("Number of private households", "Average value of dwellings $", 584500, 655000),
+                            ("Confidence interval lower bound of number of private households", "Median value of dwelling $", 1, 1)]])
+v = census.parse_value(val)
+assert v == {"66023": {"valeurDeclaree2021": 500000.0, "valeurUnifamiliale2021": 548000.0}}, v
 i = census.parse_income(inc)
 t = census.parse_tenure(ten)
 a = census.parse_age(age)
