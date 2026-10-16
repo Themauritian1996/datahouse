@@ -42,7 +42,7 @@ export async function renderMuni(ctx, code) {
       ${muni.loyer?.affiche2ch ? row(`Loyer affiché moyen, 2 chambres (${esc(muni.loyer.periodeAffiche || '')})`, money(muni.loyer.affiche2ch)) : ''}
       ${row('Rendement brut médian des plex', muni.rendementPlex ? pct(muni.rendementPlex) : '—')}
       ${row('Locataires', c.pctProprio != null ? pct(100 - c.pctProprio, 0) : '—')}`,
-    { note: 'Loyer en place : médiane du recensement 2021 indexée selon l\'IPC des loyers du Québec. Loyer affiché : nouveaux baux, région métropolitaine.' })}
+    { note: muni.loyer?.source === 'affiche' ? 'Loyer de référence : loyer affiché moyen d\'un 2 chambres de la région métropolitaine (nouveaux baux), réduit de 10 %. Les loyers en place sont souvent plus bas.' : 'Loyer en place : médiane du recensement 2021 indexée selon l\'IPC des loyers du Québec. Loyer affiché : nouveaux baux, région métropolitaine.' })}
     ${section('Facilité de revente', `
       <div class="gauge-wrap">${gauge(liq.score, { label: 'Facilité de revente' })}<p class="lead">Indice expérimental (0 à 100) : taille et dynamisme du marché, mobilité et abordabilité.</p></div>
       ${Object.entries(labels).map(([k, l]) => `<div class="mrow"><span>${l}</span>${meter(liq.composantes?.[k])}</div>`).join('')}`)}

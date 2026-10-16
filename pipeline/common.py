@@ -187,7 +187,10 @@ def muni_code(value) -> str | None:
     """Ramène un code géographique (SGC à 7 chiffres ou MAMH à 5) au code à 5 chiffres."""
     if value is None:
         return None
-    digits = re.sub(r"\D", "", str(value))
+    raw = str(value).strip().upper()
+    if re.fullmatch(r"[A-Z]{2}\d{3}", raw):  # territoires non organisés (p. ex. NR942)
+        return raw
+    digits = re.sub(r"\D", "", raw)
     if not digits:
         return None
     if len(digits) >= 7 and digits.startswith("24"):

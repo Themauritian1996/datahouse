@@ -45,25 +45,30 @@ POP_TABLE = "https://www150.statcan.gc.ca/n1/tbl/csv/98100002-eng.zip"  # serveu
 
 
 def load_population_table(source: Path | None = None) -> dict[str, dict]:
-    """Repli : population 2016-2021 et densité par municipalité (tableau 98-10-0002)."""
+    """Repli : population 2016-2021 et densité par municipalité (tableau 98-10-0002, format large)."""
     source = source or download(POP_TABLE, WORK / "pop_98100002.zip", timeout=300)
     z = zipfile.ZipFile(source)
     name = next(n for n in z.namelist() if n.endswith(".csv") and "metadata" not in n.lower())
     df = pd.read_csv(io.TextIOWrapper(z.open(name), encoding="utf-8-sig"), dtype=str)
-    member = next(c for c in df.columns if "dwelling counts" in c.lower() or "chiffres de population" in c.lower())
     wanted = {
         "Population, 2021": "pop2021", "Population, 2016": "pop2016",
         "Population percentage change, 2016 to 2021": "croissancePop",
         "Population density per square kilometre": "densite",
     }
-    df = df[df[member].str.strip().isin(wanted) & df["DGUID"].str.contains("A0005", na=False)]
+    colmap = {}
+    for c in df.columns:
+        label = c.split(":", 1)[-1].split("[")[0].strip()
+        label = label.replace(", 2021", ", 2021") if label.startswith("Population") else label
+        for w, k in wanted.items():
+            if label == w or label == w + ", 2021":
+                colmap[c] = k
+    df = df[df["DGUID"].astype(str).str.contains("A000524", na=False)]
     out: dict[str, dict] = {}
-    for dguid, m, v in zip(df["DGUID"], df[member].str.strip(), pd.to_numeric(df["VALUE"], errors="coerce")):
-        sgc = dguid.split("A0005")[-1]
-        if not sgc.startswith("24") or pd.isna(v):
-            continue
-        out.setdefault(sgc[2:7], {})[wanted[m]] = float(v)
-    log.info("population (tableau 98-10-0002) : %d municipalités", len(out))
+    for _, row in df.iterrows():
+        code = muni_code(str(row["DGUID"]).split("A0005")[-1])
+        rec = {k: pd.to_numeric(row[c], errors="coerce") for c, k in colmap.items()}
+        out[code] = {k: float(v) for k, v in rec.items() if pd.notna(v)}
+    log.info("population (tableau 98-10-0002) : %d municipalités, colonnes %s", len(out), sorted(colmap.values()))
     return out
 
 

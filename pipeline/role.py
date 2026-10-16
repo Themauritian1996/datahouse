@@ -1,57 +1,31 @@
-"""Rôle d'évaluation foncière géoréférencé du Québec (MAMH).
+"""Rôle d'évaluation foncière géoréférencé du Québec (MAMH, GeoPackage).
 
-Lit le GeoPackage provincial par tranches, garde les unités résidentielles et
-produit une table compacte : coordonnées, adresse, type, logements, année,
-superficies et valeurs au rôle (actuel et antérieur).
+Le GeoPackage provincial contient plusieurs tables reliées par `id_provinc` :
+
+* `rol_unite_p_AAAA`          positions (MultiPoint) des unités d'évaluation ;
+* `b05v_unite_evaln_AAAA`     caractéristiques et valeurs (balises RL0105A, RL0311A, RL0404A…) ;
+* `b05v_adr_unite_evaln_AAAA` adresses (RL0101A… ; plusieurs par unité, `no_seq_adr`).
+
+On ne garde que les unités résidentielles (et mixtes avec logements).
 """
 from __future__ import annotations
 
-import re
-from pathlib import Path
-
-import geopandas as gpd
 import numpy as np
 import pandas as pd
 import pyogrio
+import shapely
 
 from common import WORK, ckan_resources, download, log, muni_code, norm, pick_resource, unzip
 
 DATASET = "roles-d-evaluation-fonciere-du-quebec"
 
-# Balises du Manuel d'évaluation foncière du Québec (MEFQ).
-TAGS = {
-    "muni": ["rlm01a", "code_mun", "cod_geo", "code_geo", "codegeo"],
-    "role_annee": ["rlm02a"],
-    "no_inf": ["rl0101a"], "no_inf_s": ["rl0101b"], "no_sup": ["rl0101c"],
-    "generique": ["rl0101e"], "lien_voie": ["rl0101f"], "voie": ["rl0101g"],
-    "cardinal": ["rl0101h"], "app": ["rl0101i"],
-    "mat_a": ["rl0104a"], "mat_b": ["rl0104b"], "mat_c": ["rl0104c"],
-    "mat_e": ["rl0104e"], "mat_f": ["rl0104f"],
-    "matricule": ["matricule", "mat18", "no_matricule"],
-    "cubf": ["rl0105a"],
-    "condition": ["rl0201u"],
-    "terrain": ["rl0302a"],
-    "zonage_agri": ["rl0303a"],
-    "etages": ["rl0306a"],
-    "annee": ["rl0307a"],
-    "aire": ["rl0308a"],
-    "lien": ["rl0309a"],
-    "genre": ["rl0310a"],
-    "logements": ["rl0311a"],
-    "date_ref": ["rl0401a"],
-    "v_terrain": ["rl0402a"],
-    "v_batiment": ["rl0403a"],
-    "valeur": ["rl0404a"],
-    "valeur_ant": ["rl0405a"],
-}
-
 GENERIQUES = {
     "ru": "rue", "av": "avenue", "bd": "boulevard", "bo": "boulevard", "boul": "boulevard",
-    "ch": "chemin", "rg": "rang", "rt": "route", "mt": "montée", "mo": "montée",
-    "pl": "place", "cr": "croissant", "im": "impasse", "al": "allée", "pr": "promenade",
-    "ca": "carré", "cv": "côte", "co": "côte", "te": "terrasse", "ci": "circle",
-    "cs": "cours", "pk": "parc", "qu": "quai", "rl": "ruelle", "se": "sentier",
-    "ae": "autoroute", "rp": "rond-point", "ve": "venelle", "ld": "lac", "dm": "domaine",
+    "ch": "chemin", "rg": "rang", "ra": "rang", "rt": "route", "ro": "route", "mt": "montée",
+    "mo": "montée", "pl": "place", "cr": "croissant", "im": "impasse", "al": "allée", "pr": "promenade",
+    "ca": "carré", "cv": "côte", "co": "côte", "te": "terrasse", "ci": "circle", "cs": "cours",
+    "pk": "parc", "qu": "quai", "rl": "ruelle", "se": "sentier", "ae": "autoroute", "rp": "rond-point",
+    "ve": "venelle", "dm": "domaine", "ld": "lac",
 }
 
 TYPE_LABELS = {
@@ -59,8 +33,16 @@ TYPE_LABELS = {
     "H": "Chalet", "R": "Maison mobile", "X": "Mixte (commerce + logements)",
 }
 
+EVAL_COLS = {
+    "id_provinc": "id", "code_mun": "muni", "rl0105a": "cubf", "rl0302a": "ter", "rl0303a": "agri",
+    "rl0306a": "et", "rl0307a": "an", "rl0308a": "aire", "rl0309a": "li", "rl0311a": "lg",
+    "rl0402a": "vt", "rl0404a": "vr", "rl0405a": "va", "dat_cond_mrche": "dateRef",
+}
+ADR_COLS = ["id_provinc", "no_seq_adr", "rl0101a", "rl0101b", "rl0101c", "rl0101e", "rl0101f",
+            "rl0101g", "rl0101h", "rl0101i"]
 
-def find_gpkg() -> Path:
+
+def find_gpkg():
     res = ckan_resources(DATASET)
     r = pick_resource(res, ["georeferenc"], fmt="GPKG")
     if r is None:
@@ -71,145 +53,104 @@ def find_gpkg() -> Path:
     return max(folder.rglob("*.gpkg"), key=lambda p: p.stat().st_size)
 
 
-def map_fields(fields: list[str]) -> dict[str, str]:
-    """Associe nos clés aux colonnes réelles du fichier (noms tolérants)."""
-    normed = {norm(f).replace(" ", "_"): f for f in fields}
-    out = {}
-    for key, tags in TAGS.items():
-        for tag in tags:
-            exact = [f for n, f in normed.items() if n == tag]
-            pref = [f for n, f in normed.items() if n.startswith(tag)]
-            hit = exact or sorted(pref, key=len)
-            if hit:
-                out[key] = hit[0]
-                break
-    return out
+def _layer(layers: list[str], prefix: str) -> str:
+    hit = [l for l in layers if l.lower().startswith(prefix)]
+    if not hit:
+        raise RuntimeError(f"Table « {prefix}… » absente du GeoPackage ({layers})")
+    return hit[0]
 
 
-def _clean_str(s: pd.Series) -> pd.Series:
-    return s.fillna("").astype(str).str.strip().replace({"None": "", "nan": ""})
+def _num(s: pd.Series) -> pd.Series:
+    return pd.to_numeric(s.astype("string").str.replace(",", ".", regex=False), errors="coerce")
 
 
-def _num(s: pd.Series | None, n: int) -> np.ndarray:
-    if s is None:
-        return np.full(n, np.nan)
-    return pd.to_numeric(s.astype(str).str.replace(",", ".", regex=False)
-                         .str.replace(r"[^\d.\-]", "", regex=True), errors="coerce").to_numpy()
+def _str(s: pd.Series) -> pd.Series:
+    return s.astype("string").fillna("").str.strip().replace({"None": "", "nan": "", "<NA>": ""})
 
 
-def build_address(df: pd.DataFrame, f: dict[str, str]) -> pd.Series:
-    def col(k):
-        return _clean_str(df[f[k]]) if k in f else pd.Series([""] * len(df), index=df.index)
-    no = col("no_inf") + col("no_inf_s")
-    sup = col("no_sup")
-    no = np.where(sup != "", no + "-" + sup, no)
-    gen = col("generique").map(lambda g: GENERIQUES.get(norm(g), g.lower()) if g else "")
-    voie = col("voie").str.title().str.replace(r"\bDe\b", "de", regex=True) \
-        .str.replace(r"\bDu\b", "du", regex=True).str.replace(r"\bDes\b", "des", regex=True)
-    lien = col("lien_voie").str.lower()
-    card = col("cardinal")
-    app = col("app")
-    parts = (pd.Series(no, index=df.index) + " " + gen + " " + lien + " " + voie + " " + card)
-    parts = parts.str.replace(r"\s+", " ", regex=True).str.strip()
-    return np.where(app != "", parts + ", app. " + app, parts)
-
-
-def classify(cubf: np.ndarray, log_: np.ndarray, lien: np.ndarray, local: np.ndarray,
-             cond: np.ndarray) -> np.ndarray:
+def classify(cubf: np.ndarray, lg: np.ndarray, lien: np.ndarray) -> np.ndarray:
     t = np.full(len(cubf), "", dtype=object)
-    lg = np.nan_to_num(log_, nan=1)
+    n = np.nan_to_num(lg, nan=1)
     resid = (cubf >= 1000) & (cubf < 1300)
-    mixte = (cubf >= 5000) & (cubf < 7000) & (lg >= 2)
-    t[resid & (lg <= 1)] = "U"
-    t[resid & (lg >= 2) & (lg <= 5)] = "P"
-    t[resid & (lg >= 6)] = "M"
+    t[resid & (n <= 1)] = "U"
+    t[resid & (n >= 2) & (n <= 5)] = "P"
+    t[resid & (n >= 6)] = "M"
     t[(cubf >= 1100) & (cubf < 1200)] = "H"
     t[(cubf >= 1211) & (cubf < 1300)] = "R"
-    condo = resid & ((lien == 5) | local | (cond == 3)) & (lg <= 1)
-    t[condo] = "C"
-    t[mixte] = "X"
+    t[resid & (lien == 5) & (n <= 1)] = "C"
+    t[(cubf >= 5000) & (cubf < 7000) & (n >= 2)] = "X"
     return t
 
 
-def process_slice(gdf: gpd.GeoDataFrame, f: dict[str, str], munis: gpd.GeoDataFrame | None) -> pd.DataFrame:
-    n = len(gdf)
-    cubf = _num(gdf.get(f.get("cubf")), n)
-    logts = _num(gdf.get(f.get("logements")), n)
-    lien = _num(gdf.get(f.get("lien")), n)
-    cond = _num(gdf.get(f.get("condition")), n)
-    local = (_clean_str(gdf[f["mat_f"]]) != "").to_numpy() if "mat_f" in f else np.zeros(n, bool)
-    t = classify(cubf, logts, lien, local, cond)
-    keep = t != ""
-    vr = _num(gdf.get(f.get("valeur")), n)
-    keep &= np.nan_to_num(vr, nan=0) > 1000
-    g = gdf.loc[keep].copy()
-    if g.empty:
-        return pd.DataFrame()
-    geom = g.geometry
-    if not (geom.geom_type == "Point").all():
-        geom = geom.representative_point()
-    pts = gpd.GeoSeries(geom, crs=gdf.crs).to_crs(4326)
-    out = pd.DataFrame({
-        "lon": pts.x.round(5).to_numpy(), "lat": pts.y.round(5).to_numpy(),
-        "t": t[keep], "lg": logts[keep], "cubf": cubf[keep],
-        "an": _num(g.get(f.get("annee")), len(g)), "aire": _num(g.get(f.get("aire")), len(g)),
-        "ter": _num(g.get(f.get("terrain")), len(g)), "et": _num(g.get(f.get("etages")), len(g)),
-        "li": lien[keep], "vr": vr[keep], "va": _num(g.get(f.get("valeur_ant")), len(g)),
-        "vt": _num(g.get(f.get("v_terrain")), len(g)),
-        "agri": _num(g.get(f.get("zonage_agri")), len(g)),
-    })
-    out["adr"] = build_address(g, f)
-    if "matricule" in f:
-        out["id"] = _clean_str(g[f["matricule"]]).to_numpy()
-    else:
-        parts = [_clean_str(g[f[k]]) for k in ("mat_a", "mat_b", "mat_c", "mat_e", "mat_f") if k in f]
-        out["id"] = (pd.concat(parts, axis=1).agg("-".join, axis=1).str.strip("-").to_numpy()
-                     if parts else "")
-    if "muni" in f:
-        out["muni"] = g[f["muni"]].map(muni_code).to_numpy()
-    else:
-        out["muni"] = None
-    if "role_annee" in f:
-        out["roleAn"] = _num(g[f["role_annee"]], len(g))
-    if "date_ref" in f:
-        out["dateRef"] = _clean_str(g[f["date_ref"]]).str[:10].to_numpy()
-    missing = out["muni"].isna()
-    if missing.any() and munis is not None:
-        pts_gdf = gpd.GeoDataFrame(out.loc[missing, []], geometry=gpd.points_from_xy(
-            out.loc[missing, "lon"], out.loc[missing, "lat"]), crs=4326)
-        joined = gpd.sjoin(pts_gdf, munis[["code", "geometry"]], how="left", predicate="within")
-        joined = joined[~joined.index.duplicated()]
-        out.loc[missing, "muni"] = joined["code"].reindex(out.index[missing]).to_numpy()
-    out = out[out["muni"].notna()]
-    out["id"] = out["id"].where(out["id"] != "", out["muni"] + "-" + out.index.astype(str))
-    return out
+def build_address(a: pd.DataFrame) -> pd.Series:
+    no = _str(a["rl0101a"]) + _str(a["rl0101b"])
+    sup = _str(a["rl0101c"])
+    no = no.where(sup == "", no + "-" + sup)
+    gen = _str(a["rl0101e"]).map(lambda g: GENERIQUES.get(norm(g), g.lower()) if g else "")
+    voie = _str(a["rl0101g"]).str.title()
+    for w in ("De", "Du", "Des", "La", "Le", "L'", "D'"):
+        voie = voie.str.replace(rf"(?<=\s){w}\b", w.lower(), regex=True)
+    parts = (no + " " + gen + " " + _str(a["rl0101f"]).str.lower() + " " + voie + " " + _str(a["rl0101h"]))
+    parts = parts.str.replace(r"\s+", " ", regex=True).str.strip()
+    app = _str(a["rl0101i"])
+    return parts.where(app == "", parts + ", app. " + app)
 
 
-def load_role(gpkg: Path | None, munis: gpd.GeoDataFrame | None, slice_size: int = 400_000) -> pd.DataFrame:
+def load_role(gpkg=None, munis=None) -> pd.DataFrame:
     gpkg = gpkg or find_gpkg()
-    layers = pyogrio.list_layers(gpkg)
-    best = max(layers, key=lambda l: pyogrio.read_info(gpkg, layer=l[0]).get("features", 0))[0]
-    info = pyogrio.read_info(gpkg, layer=best)
-    fields = list(info["fields"])
-    f = map_fields(fields)
-    log.info("couche %s : %d unités, %d champs", best, info["features"], len(fields))
-    log.info("champs reconnus : %s", {k: v for k, v in f.items()})
-    absent = [k for k in ("valeur", "cubf", "logements") if k not in f]
-    if absent:
-        log.error("champs essentiels absents %s ; champs disponibles : %s", absent, fields)
-        raise RuntimeError("Structure du GeoPackage non reconnue (voir le journal)")
-    cols = sorted(set(f.values()))
-    parts = []
-    total = info["features"]
-    for start in range(0, total, slice_size):
-        gdf = pyogrio.read_dataframe(gpkg, layer=best, columns=cols,
-                                     skip_features=start, max_features=slice_size)
-        part = process_slice(gdf, f, munis)
-        parts.append(part)
-        log.info("  %d/%d lues, %d résidentielles gardées", min(start + slice_size, total), total, len(part))
-    units = pd.concat(parts, ignore_index=True)
-    log.info("rôle : %d unités résidentielles", len(units))
-    return units
+    layers = [l[0] for l in pyogrio.list_layers(gpkg)]
+    l_pts, l_eval, l_adr = _layer(layers, "rol_unite_p"), _layer(layers, "b05v_unite_evaln"), \
+        _layer(layers, "b05v_adr_unite_evaln")
+    log.info("tables : %s, %s, %s", l_pts, l_eval, l_adr)
+
+    # 1. Caractéristiques et valeurs, filtrées sur le résidentiel.
+    fields = set(pyogrio.read_info(gpkg, layer=l_eval)["fields"])
+    cols = [c for c in EVAL_COLS if c in fields]
+    ev = pyogrio.read_dataframe(gpkg, layer=l_eval, columns=cols, read_geometry=False, use_arrow=True)
+    ev = ev.rename(columns=EVAL_COLS)
+    log.info("unités au rôle : %d", len(ev))
+    for c in ("cubf", "ter", "agri", "et", "an", "aire", "li", "lg", "vt", "vr", "va"):
+        ev[c] = _num(ev[c]) if c in ev else np.nan
+    ev["t"] = classify(ev["cubf"].to_numpy(), ev["lg"].to_numpy(), ev["li"].to_numpy())
+    ev = ev[(ev["t"] != "") & (ev["vr"] > 1000)].copy()
+    ev["id"] = _str(ev["id"])
+    ev["muni"] = ev["muni"].map(muni_code)
+    ev["dateRef"] = ev["dateRef"].astype("string").str[:10] if "dateRef" in ev else None
+    ev["roleAn"] = pd.to_numeric(ev["dateRef"].str[:4], errors="coerce") + 2
+    log.info("unités résidentielles : %d", len(ev))
+    keep = set(ev["id"])
+
+    # 2. Positions (premier point de chaque MultiPoint), en degrés.
+    tbl = pyogrio.read_arrow(gpkg, layer=l_pts, columns=["id_provinc"])[1]
+    ids = np.asarray(tbl.column("id_provinc").to_pylist(), dtype=object)
+    geom_col = next(c for c in tbl.column_names if c != "id_provinc")
+    geoms = shapely.from_wkb(np.asarray(tbl.column(geom_col).to_pylist(), dtype=object))
+    coords, idx = shapely.get_coordinates(geoms, return_index=True)
+    first = np.unique(idx, return_index=True)[1]
+    pts = pd.DataFrame({"id": pd.Series(ids[idx[first]]).astype("string").str.strip(),
+                        "lon": coords[first, 0].round(5), "lat": coords[first, 1].round(5)})
+    pts = pts[pts["id"].isin(keep)].drop_duplicates("id")
+    log.info("positions trouvées : %d", len(pts))
+
+    # 3. Adresses (la première de chaque unité).
+    afields = set(pyogrio.read_info(gpkg, layer=l_adr)["fields"])
+    ad = pyogrio.read_dataframe(gpkg, layer=l_adr, columns=[c for c in ADR_COLS if c in afields],
+                                read_geometry=False, use_arrow=True)
+    for c in ADR_COLS:
+        if c not in ad:
+            ad[c] = ""
+    ad["id_provinc"] = _str(ad["id_provinc"])
+    ad = ad[ad["id_provinc"].isin(keep)]
+    ad["no_seq_adr"] = pd.to_numeric(ad["no_seq_adr"], errors="coerce")
+    ad = ad.sort_values("no_seq_adr").drop_duplicates("id_provinc")
+    adr = pd.Series(build_address(ad).to_numpy(), index=ad["id_provinc"].to_numpy())
+
+    units = ev.merge(pts, on="id", how="inner")
+    units["adr"] = units["id"].map(adr).fillna("")
+    # Coordonnées plausibles pour le Québec seulement.
+    units = units[units["lat"].between(44.9, 63) & units["lon"].between(-80, -57)]
+    log.info("rôle : %d unités résidentielles géolocalisées", len(units))
+    return units.reset_index(drop=True)
 
 
-__all__ = ["load_role", "map_fields", "classify", "TYPE_LABELS", "re"]
+__all__ = ["load_role", "classify", "TYPE_LABELS"]

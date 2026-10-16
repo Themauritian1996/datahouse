@@ -42,30 +42,31 @@ def rent_cpi_factor(path: Path | None = None) -> dict:
         return {"facteur": None}
 
 
+QC_CMA = ("montreal", "quebec,", "gatineau", "sherbrooke", "saguenay", "trois-rivieres", "drummondville",
+          "granby", "saint-jean-sur-richelieu", "rimouski", "saint-hyacinthe", "joliette", "victoriaville")
+
+
 def asking_rents(path: Path | None = None) -> dict:
-    """Loyers affichés moyens (2 chambres, appartements) par région métropolitaine du Québec."""
+    """Loyers affichés moyens d'un appartement de 2 chambres, par région métropolitaine du Québec."""
     try:
         path = path or download(ASK_URL, WORK / "asking.zip", timeout=300)
         df = pd.read_csv(_table_csv(path), dtype=str)
-        cols = {norm(c): c for c in df.columns}
-        bed = next((cols[c] for c in cols if "bedroom" in c), None)
-        unit = next((cols[c] for c in cols if "unit type" in c or "rental unit" in c), None)
-        df = df[df["GEO"].str.contains("Quebec", na=False)]
-        if bed:
-            df = df[df[bed].str.contains("2 bedroom", case=False, na=False)]
-        if unit:
-            apt = df[unit].str.contains("apartment", case=False, na=False)
-            if apt.any():
-                df = df[apt]
+        unit = next(c for c in df.columns if "unit type" in c.lower())
+        est = next((c for c in df.columns if c.lower() == "estimates"), None)
+        df = df[df[unit].str.strip().str.lower() == "apartment - 2 bedrooms"]
+        if est:
+            df = df[df[est].str.contains("asking rent", case=False, na=False)]
+        g = df["GEO"].astype(str).map(norm)
+        quebec = g.map(lambda x: any(k in x for k in QC_CMA) and "ontario part" not in x).astype(bool)
+        df = df[quebec.to_numpy()].copy()
         df["VALUE"] = pd.to_numeric(df["VALUE"], errors="coerce")
         df = df.dropna(subset=["VALUE"])
         latest = df["REF_DATE"].max()
         df = df[df["REF_DATE"] == latest]
         out = {}
         for geo, val in zip(df["GEO"], df["VALUE"]):
-            key = norm(geo.split(",")[0])
-            out.setdefault(key, round(float(val)))
-        log.info("loyers affichés (%s) : %d régions", latest, len(out))
+            out.setdefault(norm(geo.split(",")[0]), round(float(val)))
+        log.info("loyers affichés (%s) : %s", latest, out)
         return {"periode": latest, "deuxChambres": out}
     except Exception as exc:  # noqa: BLE001
         log.warning("loyers affichés indisponibles : %s", exc)

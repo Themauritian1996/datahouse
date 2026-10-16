@@ -12,7 +12,7 @@ from pathlib import Path
 import geopandas as gpd
 import numpy as np
 import pandas as pd
-from shapely.geometry import Point, box
+from shapely.geometry import MultiPoint, Point, box
 
 HERE = Path(__file__).resolve().parent
 OUT = HERE / "_gen"
@@ -116,24 +116,27 @@ def _cpi() -> Path:
 
 
 def _asking() -> Path:
-    df = pd.DataFrame([
-        {"REF_DATE": "2026-04", "GEO": "Montréal, Quebec", "Rental unit type": "Apartment",
-         "Number of bedrooms": "2 bedrooms", "VALUE": 1990},
-        {"REF_DATE": "2026-04", "GEO": "Québec, Quebec", "Rental unit type": "Apartment",
-         "Number of bedrooms": "2 bedrooms", "VALUE": 1620},
-        {"REF_DATE": "2026-04", "GEO": "Sherbrooke, Quebec", "Rental unit type": "Apartment",
-         "Number of bedrooms": "2 bedrooms", "VALUE": 1450},
-        {"REF_DATE": "2026-01", "GEO": "Sherbrooke, Quebec", "Rental unit type": "Apartment",
-         "Number of bedrooms": "2 bedrooms", "VALUE": 1400},
-    ])
-    return _table_zip("46100092", df)
+    rows = []
+    for d, geo, v in [("2026-04", "Montréal, Census metropolitan area (CMA)", 1990),
+                      ("2026-04", "Québec, Census metropolitan area (CMA)", 1620),
+                      ("2026-04", "Sherbrooke, Census metropolitan area (CMA)", 1450),
+                      ("2026-04", "Ottawa - Gatineau (Ontario part), Census metropolitan area (CMA)", 2300),
+                      ("2026-01", "Sherbrooke, Census metropolitan area (CMA)", 1400)]:
+        rows.append({"REF_DATE": d, "GEO": geo, "Rental unit type": "Apartment - 2 bedrooms",
+                     "Estimates": "Average asking rent", "VALUE": v})
+        rows.append({"REF_DATE": d, "GEO": geo, "Rental unit type": "Apartment - 1 bedroom",
+                     "Estimates": "Average asking rent", "VALUE": v - 300})
+    return _table_zip("46100092", pd.DataFrame(rows))
 
 
 def _gpkg(per_muni: int = 3500) -> Path:
+    """GeoPackage au format réel du MAMH : positions + caractéristiques + adresses."""
+    import pyogrio
     rng = np.random.default_rng(11)
-    rows = []
+    pts, ev, ad = [], [], []
     for code, nom, lon, lat, w, prix, *_ in MUNIS:
         n = per_muni if code != "46058" else 700
+        ref = "2024-07-01" if code in ("66023", "23027") else "2023-07-01"
         i = 0
         while i < n:
             x = lon + rng.uniform(-w, w) * 0.95
@@ -145,47 +148,54 @@ def _gpkg(per_muni: int = 3500) -> Path:
             annee = int(rng.integers(1900, 2025))
             dist = np.hypot(x - lon, y - lat) / w
             loc = (1.25 - 0.5 * dist) * rng.lognormal(0, 0.18)
-            base = dict(RLM01A=code, RLM02A="2026" if code in ("66023", "23027") else "2025",
-                        RL0101A1=str(no), RL0101E1=gen, RL0101G1=street.upper(),
-                        RL0104A=str(int(x * 1e4) % 10000), RL0104B=str(int(y * 1e4) % 100),
-                        RL0104C=str(no % 10000), RL0201U1="1", RL0303A="0",
-                        RL0401A="2024-07-01" if code in ("66023", "23027") else "2023-07-01",
-                        RL0307A=str(annee), RL0307B="R")
-            geom = Point(x, y)
+            base_mat = f"{int(x * 1e4) % 10000:04d}{int(y * 1e4) % 100:02d}{no % 10000:04d}0"
+
+            def add(mat, cubf, lg, aire, ter, lien, et, vr, va, app=None):
+                pid = code + mat
+                pts.append({"id_provinc": pid, "code_mun": code, "mat18": mat, "geometry": Point(x, y)})
+                ev.append({"anrole": "2026", "id_provinc": pid, "code_mun": code, "mat18": mat,
+                           "rl0105a": str(cubf), "rl0302a": ter, "rl0303a": "0", "rl0306a": et,
+                           "rl0307a": str(annee), "rl0308a": aire, "rl0309a": str(lien) if lien else None,
+                           "rl0311a": lg, "rl0402a": None, "rl0404a": vr, "rl0405a": va,
+                           "dat_cond_mrche": ref})
+                ad.append({"anrole": "2026", "id_provinc": pid, "code_mun": code, "mat18": mat, "no_seq_adr": 1,
+                           "rl0101a": str(no), "rl0101b": None, "rl0101c": None, "rl0101e": gen, "rl0101f": None,
+                           "rl0101g": street.upper(), "rl0101h": None, "rl0101i": app})
+                if rng.random() < 0.05:  # adresse secondaire (doit être ignorée)
+                    ad.append({**ad[-1], "no_seq_adr": 2, "rl0101a": str(no + 2)})
+
             if kind == "C":
                 k = int(rng.integers(4, 24))
                 for loc_no in range(1, k + 1):
                     aire = rng.uniform(55, 140)
                     vr = prix * 0.55 * (aire / 85) ** 0.85 * loc / 1.2
-                    rows.append({**base, "RL0104F": str(loc_no), "RL0101I1": str(100 + loc_no),
-                                 "RL0105A": "1000", "RL0201U1": "3", "RL0306A": "1", "RL0308A": f"{aire:.1f}",
-                                 "RL0309A": "5", "RL0311A": "1", "RL0302A": "", "RL0404A": str(int(vr)),
-                                 "RL0405A": str(int(vr / rng.uniform(1.15, 1.35))), "geometry": geom})
+                    add(f"{base_mat}000{loc_no:04d}", 1000, 1, round(aire, 1), None, 5, 1, float(int(vr)),
+                        float(int(vr / rng.uniform(1.15, 1.35))), app=str(100 + loc_no))
                     i += 1
                 continue
             if kind == "N":
-                rows.append({**base, "RL0105A": "5811", "RL0311A": "0", "RL0308A": "300", "RL0302A": "800",
-                             "RL0404A": "900000", "RL0405A": "800000", "geometry": geom})
+                add(f"{base_mat}0000000", 5811, 0, 300.0, 800.0, 1, 1, 900000.0, 800000.0)
                 i += 1
                 continue
-            logts = {"U": 1, "P": int(rng.integers(2, 6)), "M": int(rng.integers(6, 24)), "H": 1}[kind]
-            aire = {"U": rng.uniform(90, 260), "P": logts * rng.uniform(70, 105),
-                    "M": logts * rng.uniform(60, 85), "H": rng.uniform(60, 160)}[kind]
+            lg = {"U": 1, "P": int(rng.integers(2, 6)), "M": int(rng.integers(6, 24)), "H": 1}[kind]
+            aire = {"U": rng.uniform(90, 260), "P": lg * rng.uniform(70, 105),
+                    "M": lg * rng.uniform(60, 85), "H": rng.uniform(60, 160)}[kind]
             ter = rng.uniform(250, 1400) * (4 if kind == "H" else 1)
             vr = prix * (aire / 150) ** 0.8 * loc / 1.2 * (0.9 if kind in "PM" else 1)
-            rows.append({**base, "RL0105A": "1100" if kind == "H" else "1000",
-                         "RL0306A": str(int(rng.integers(1, 4))), "RL0308A": f"{aire:.1f}",
-                         "RL0309A": str(int(rng.choice([1, 1, 1, 2, 3]))), "RL0311A": str(logts),
-                         "RL0302A": f"{ter:.1f}", "RL0404A": str(int(vr)),
-                         "RL0405A": str(int(vr / rng.uniform(1.12, 1.4))) if rng.random() > 0.05 else "",
-                         "geometry": geom})
+            va = float(int(vr / rng.uniform(1.12, 1.4))) if rng.random() > 0.05 else None
+            add(f"{base_mat}0000000", 1100 if kind == "H" else 1000, lg, round(aire, 1), round(ter, 1),
+                int(rng.choice([1, 1, 1, 2, 3])), int(rng.integers(1, 4)), float(int(vr)), va)
             i += 1
-    gdf = gpd.GeoDataFrame(rows, crs=4326).to_crs(6622)
     path = OUT / "role.gpkg"
     if path.exists():
         path.unlink()
-    gdf.to_file(path, layer="role_evaluation_2026", driver="GPKG")
-    gpd.GeoDataFrame({"nom": ["vide"]}, geometry=[Point(0, 0)], crs=4326).to_file(path, layer="metadonnees", driver="GPKG")
+    g = gpd.GeoDataFrame(pts, crs=4269)
+    g["geometry"] = g.geometry.map(lambda p: MultiPoint([p]))
+    g.to_file(path, layer="rol_unite_p_2026", driver="GPKG")
+    pyogrio.write_dataframe(pd.DataFrame(ev), path, layer="b05v_unite_evaln_2026", driver="GPKG", append=False)
+    pyogrio.write_dataframe(pd.DataFrame(ad), path, layer="b05v_adr_unite_evaln_2026", driver="GPKG")
+    pyogrio.write_dataframe(pd.DataFrame(ev[:10])[["anrole", "id_provinc", "code_mun", "mat18"]], path,
+                            layer="b05v_lot_cadst_2026", driver="GPKG")
     return path
 
 

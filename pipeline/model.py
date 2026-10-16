@@ -160,17 +160,14 @@ def liquidity(pop, croiss, g, mob, ratio_prix_revenu) -> dict:
 
 
 def cma_key(nom: str | None, cm: str | None, asking: dict) -> str | None:
+    """Région métropolitaine (loyers affichés) correspondant à une municipalité."""
     if not asking:
         return None
     n = norm(nom or "")
     c = norm(cm or "")
-    if "montreal" in c and any("montreal" in k for k in asking):
-        return next(k for k in asking if "montreal" in k)
-    if "quebec" in c and any(k.startswith("quebec") for k in asking):
-        return next(k for k in asking if k.startswith("quebec"))
     for k in asking:
-        base = k.replace("(quebec part)", "").replace("partie du quebec", "").strip()
-        names = [p.strip() for p in base.replace("–", "-").split("-")]
-        if n and any(n == p for p in names if p):
+        base = k.replace("(quebec part)", "").replace("(partie du quebec)", "")
+        names = [p.strip() for p in base.replace("–", "-").split(" - ")]
+        if any(p and (p == n or (c and p in c)) for p in names):
             return k
     return None

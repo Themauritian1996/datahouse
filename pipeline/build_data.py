@@ -171,6 +171,9 @@ def main() -> None:
         loyer_est = round(loyer2021 * cpi_f) if loyer2021 and cpi_f else None
         key = model.cma_key(nom, r.get("cm"), asking.get("deuxChambres", {}))
         affiche = asking["deuxChambres"].get(key) if key else None
+        loyer_src = "recensement" if loyer_est else None
+        if not loyer_est and affiche:  # repli : loyer affiché régional, prudemment réduit
+            loyer_est, loyer_src = round(affiche * 0.9 / 5) * 5, "affiche"
         u = st.get("U") or st.get("C") or {}
         ratio_pr = (u.get("medEst") / c["revenuMenage"]) if u.get("medEst") and c.get("revenuMenage") else None
         liq = model.liquidity(pop, c.get("croissancePop"), f["g"], c.get("pctDemenage1an"), ratio_pr)
@@ -185,7 +188,7 @@ def main() -> None:
             "marche": f,
             "types": st,
             "recensement": c,
-            "loyer": {"median2021": loyer2021, "facteurIPC": cpi_f, "estime": loyer_est,
+            "loyer": {"median2021": loyer2021, "facteurIPC": cpi_f, "estime": loyer_est, "source": loyer_src,
                       "affiche2ch": affiche, "region": key, "periodeAffiche": asking.get("periode")},
             "rendementPlex": rendement,
             "liquidite": liq,

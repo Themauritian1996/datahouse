@@ -283,7 +283,7 @@ const RENDER = {
   investisseur(panel, { unit, muni, est, meta, st }) {
     const ref = muni.loyer || {};
     const refs = [
-      ref.estime ? `loyer médian en place estimé : <b>${money(ref.estime)}</b> (recensement 2021 indexé selon l'IPC des loyers)` : '',
+      ref.estime ? `loyer de référence : <b>${money(ref.estime)}</b> (${ref.source === 'affiche' ? 'loyer affiché régional réduit de 10 %, à valider localement' : 'recensement 2021 indexé selon l\'IPC des loyers'})` : '',
       ref.affiche2ch ? `loyer affiché moyen d'un 2 chambres dans la région : <b>${money(ref.affiche2ch)}</b> (${esc(ref.periodeAffiche || '')})` : '',
     ].filter(Boolean).join(' ; ');
     panel.innerHTML = `
