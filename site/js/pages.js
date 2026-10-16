@@ -165,6 +165,7 @@ export function pageTarifs(ctx) {
   const cur = user?.plan || 'gratuit';
   ctx.page(`<h1>Forfaits</h1>
     <p class="lead">Des données publiques, analysées pour vous. Annulez en tout temps.</p>
+    ${CONFIG.beta ? '<p class="flag good">Période de test : toutes les fonctions Pro sont offertes gratuitement à chaque compte.</p>' : ''}
     <div class="plans">${Object.entries(CONFIG.forfaits).map(([k, p]) => `
       <div class="plan ${k === 'pro' ? 'featured' : ''}">
         <h3>${esc(p.nom)}</h3>

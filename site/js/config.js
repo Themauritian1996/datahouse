@@ -7,11 +7,21 @@ export const CONFIG = {
   // Firebase (comptes, favoris, rapports). Laissez `null` pour le mode local :
   // les comptes sont alors conservés seulement dans ce navigateur (démonstration).
   // Console Firebase > Paramètres du projet > Vos applications > Configuration SDK.
-  firebase: null,
-  // firebase: {
-  //   apiKey: '...', authDomain: 'xxx.firebaseapp.com', projectId: 'xxx',
-  //   storageBucket: 'xxx.appspot.com', messagingSenderId: '...', appId: '...',
-  // },
+  // Configuration Web publique du projet Firebase « DataHouse » (datahouse-49953). Ces valeurs
+  // identifient le projet et sont faites pour être dans le code du site ; la sécurité repose sur
+  // les règles Firestore (firebase/firestore.rules) et les domaines autorisés.
+  firebase: {
+    apiKey: 'AIzaSyBmUsWxyQirLPUWegzGiLAIEEFYSHZKcEo',
+    authDomain: 'datahouse-49953.firebaseapp.com',
+    projectId: 'datahouse-49953',
+    storageBucket: 'datahouse-49953.firebasestorage.app',
+    messagingSenderId: '670095541496',
+    appId: '1:670095541496:web:4090b0a60e0e87b3c9270d',
+  },
+
+  // Période de test : tous les comptes ont les fonctions Pro gratuitement.
+  // Mettre à false au lancement commercial (avec Stripe branché).
+  beta: true,
 
   // Forfaits. Les prix sont des suggestions : ajustez-les librement.
   // `lienPaiement` : lien de paiement Stripe (Payment Link) pour chaque forfait payant.

@@ -132,10 +132,8 @@ def run(pw, viewport, name, dark=False):
     assert "on" in page.get_attribute("#fav", "class")
 
     # Rapport (forfait Pro requis)
-    page.click("#print")
-    page.wait_for_selector("#auth-form, .plans", timeout=5000)
-    page.click("[data-plan=pro]")
-    page.wait_for_timeout(300)
+    page.evaluate("location.hash = '#/tarifs'")
+    page.wait_for_selector(".plans", timeout=5000)
     page.screenshot(path=SHOTS / f"{name}-08-forfaits.png")
     page.go_back()
     page.wait_for_selector(".sheet.open .tabs", timeout=10000)
@@ -191,7 +189,7 @@ with sync_playwright() as pw:
     run(pw, {"width": 390, "height": 844}, "mobile-sombre", dark=True)
     run(pw, {"width": 1440, "height": 900}, "bureau")
 
-real = [e for e in errors if "Failed to load resource" not in e and "ERR_FAILED" not in e]
+real = [e for e in errors if "Failed to load resource" not in e and "ERR_FAILED" not in e and "Firebase indisponible" not in e]
 print("erreurs console :", len(real))
 for e in real[:20]:
     print("  ", e)

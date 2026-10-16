@@ -12,7 +12,11 @@ const emit = () => listeners.forEach((cb) => cb(current));
 export const onUser = (cb) => { listeners.add(cb); cb(current); return () => listeners.delete(cb); };
 export const getUser = () => current;
 export const mode = () => (backend ? backend.mode : 'local');
-export const forfait = () => CONFIG.forfaits[current?.plan || 'gratuit'] || CONFIG.forfaits.gratuit;
+export const forfait = () => {
+  const plan = current?.plan || 'gratuit';
+  if (CONFIG.beta && plan === 'gratuit' && current) return { ...CONFIG.forfaits.pro, nom: 'Bêta (Pro gratuit)' };
+  return CONFIG.forfaits[plan] || CONFIG.forfaits.gratuit;
+};
 
 // ---------- Mode local ----------
 function store(key, value) {
