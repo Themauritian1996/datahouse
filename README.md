@@ -52,6 +52,14 @@ Aucune donnée Centris ou MLS n'est utilisée. Le nom et l'adresse des propriét
 | Commodités et nuisances | OpenStreetMap (API Overpass, à la demande) | ODbL |
 | Nouvelles | Google Actualités (titres et liens seulement) + Gemini (optionnel) | — |
 
+### Sources bloquées depuis GitHub (contournées)
+
+Statistique Canada (`www12`) et le serveur cartographique du MRNF refusent les serveurs de GitHub (aux États-Unis) :
+- **Contours municipaux** : reconstruits à partir des positions du rôle (grille d'environ 400 m attribuée à la municipalité majoritaire).
+- **Population** : tableau 98-10-0002 (serveur `www150`, accessible).
+- **Revenus, loyers médians et propriétaires (profil du recensement 2021)** : non disponibles pour l'instant. Les loyers de référence sont les loyers affichés régionaux (tableau 46-10-0092), réduits de 10 %.
+- Le flux *Diagnostic des sources* (Actions → Run workflow) teste la joignabilité de chaque source.
+
 ## Mise en ligne (environ 30 minutes)
 
 1. **GitHub** : créez un dépôt (p. ex. `datahouse`) et poussez-y ce dossier.
