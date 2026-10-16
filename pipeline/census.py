@@ -72,7 +72,23 @@ def load_population_table(source: Path | None = None) -> dict[str, dict]:
     return out
 
 
+STATIC = Path(__file__).resolve().parent / "static" / "recensement_2021_csd_qc.json"
+
+
+def extract_static(source: Path, dest: Path = STATIC) -> int:
+    """Extrait une fois pour toutes le profil du recensement (fichier téléchargé à la main) en petit JSON."""
+    from common import write_json
+    data = load_census(source)
+    write_json(dest, data, compact=False)
+    return len(data)
+
+
 def load_census(source: Path | None = None) -> dict[str, dict]:
+    if source is None and STATIC.exists():
+        import json
+        data = json.loads(STATIC.read_text(encoding="utf-8"))
+        log.info("recensement 2021 (fichier extrait du dépôt) : %d municipalités", len(data))
+        return data
     if source is None:
         try:
             source = download(URL, WORK / "census_qc_csd.bin", timeout=300, retries=1)
