@@ -4,29 +4,21 @@ on:
   workflow_dispatch:
 
 jobs:
-  structure:
+  recensement:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - run: pip install pandas pyogrio geopandas requests
-      - name: Structure des fichiers
+      - name: Tableaux du recensement 2021 par subdivision (serveur www150)
         shell: python
         run: |
-          import io, json, zipfile, requests, pandas as pd, pyogrio
-          S = open(__import__('os').environ['GITHUB_STEP_SUMMARY'], 'a')
-          def out(*a):
-              t = ' '.join(str(x) for x in a); print(t); S.write(t + '\n')
-          g = requests.get('https://donneesouvertes.affmunqc.net/role/ROLE2026_GEOPACKAGE.zip', stream=True)
-          with open('g.zip', 'wb') as f:
-              for ch in g.iter_content(1 << 20): f.write(ch)
-          z = zipfile.ZipFile('g.zip'); z.extractall('g')
-          import glob; p = max(glob.glob('g/**/*.gpkg', recursive=True), key=lambda p: __import__('os').path.getsize(p))
-          for lyr in pyogrio.list_layers(p):
-              info = pyogrio.read_info(p, layer=lyr[0])
-              out('## COUCHE', lyr[0], '| entités', info.get('features'), '| champs', list(info['fields']))
-              d = pyogrio.read_dataframe(p, layer=lyr[0], max_features=4, read_geometry=False)
-              out('```'); out(d.to_string()); out('```')
-          d = pyogrio.read_dataframe(p, layer='b05v_unite_evaln_2026', read_geometry=False, where="code_mun = '66023'", max_features=3)
-          out('MONTREAL'); out('```'); out(d.T.to_string()); out('```')
+          import json, os, urllib.request
+          S = open(os.environ['GITHUB_STEP_SUMMARY'], 'a')
+          def out(t): print(t); S.write(t + '\n\n')
+          req = urllib.request.Request('https://www150.statcan.gc.ca/t1/wds/rest/getAllCubesListLite', headers={'User-Agent': 'Mozilla/5.0'})
+          cubes = json.load(urllib.request.urlopen(req, timeout=120))
+          out(f'{len(cubes)} tableaux')
+          keys = ('income', 'tenure', 'shelter', 'rent', 'dwelling value', 'mobility', 'age', 'owner')
+          for c in cubes:
+              pid = str(c.get('productId'))
+              t = (c.get('cubeTitleEn') or '')
+              if pid.startswith('9810') and ('subdivision' in t.lower() or 'municipalit' in t.lower()):
+                  out(f"{pid} | {t} | {c.get('cubeEndDate')}")
