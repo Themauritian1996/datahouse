@@ -25,6 +25,7 @@ import model
 import news as news_mod
 import rfu as rfu_mod
 import role as role_mod
+import taxes as taxes_mod
 
 # Droits de mutation (taxe de bienvenue) 2026 — tranches de base de la loi,
 # plus les tranches supplémentaires adoptées par Montréal et Québec.
@@ -45,6 +46,10 @@ DROITS_MUTATION = {
 }
 
 SOURCES = [
+    {"nom": "Prévisions budgétaires des municipalités (taux de taxe foncière adoptés)", "editeur": "MAMH — Données Québec",
+     "licence": "CC-BY 4.0", "url": "https://www.donneesquebec.ca/recherche/dataset/rapport-financier-des-organismes-municipaux-et-autres-documents"},
+    {"nom": "Imagerie aérienne continue du Québec", "editeur": "Gouvernement du Québec",
+     "licence": "CC-BY 4.0", "url": "https://www.donneesquebec.ca/"},
     {"nom": "Rôles d'évaluation foncière du Québec géoréférencés", "editeur": "MAMH — Données Québec",
      "licence": "CC-BY 4.0", "url": "https://www.donneesquebec.ca/recherche/dataset/roles-d-evaluation-fonciere-du-quebec"},
     {"nom": "Richesse foncière uniformisée (facteurs comparatifs)", "editeur": "MAMH — Données Québec",
@@ -126,6 +131,7 @@ def main() -> None:
         asking = markets.asking_rents(fx["asking"])
         rate = {"tauxAffiche5ans": 6.19, "date": "2026-10-07"}
         units = role_mod.load_role(fx["gpkg"], munis)
+        taxes = taxes_mod.load_taxes(fx["taxes"], 2026)
     else:
         munis = boundaries.load_boundaries()
         try:
@@ -142,6 +148,11 @@ def main() -> None:
         asking = markets.asking_rents()
         rate = markets.mortgage_rate()
         units = role_mod.load_role(None, munis)
+        try:
+            taxes = taxes_mod.load_taxes()
+        except Exception as exc:  # noqa: BLE001 — facultatif
+            log.warning("taux de taxe foncière indisponibles : %s", exc)
+            taxes = {}
 
     cur_rfu = rfu[max(rfu)] if rfu else {}
     if munis is None:
@@ -194,6 +205,7 @@ def main() -> None:
             "rendementPlex": rendement,
             "liquidite": liq,
             "ratioPrixRevenu": round(ratio_pr, 2) if ratio_pr else None,
+            "taxes": taxes.get(code),
             "nouvelles": None,
         }
         write_json(out / "muni" / f"{code}.json", data)

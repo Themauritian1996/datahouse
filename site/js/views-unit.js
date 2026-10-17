@@ -2,7 +2,7 @@
 import { CONFIG } from './config.js';
 import {
   estimate, comparables, percentile, median, analyseAcheteur, analyseVendeur, analyseInvestisseur,
-  loyerEstime, indiceRevente, immeuble, fraisCondo, ecartComparables, scores, zonesPrix, palierPrix, zonesLoyer, palierLoyer,
+  loyerEstime, indiceRevente, immeuble, taxesFoncieres, fraisCondo, ecartComparables, scores, zonesPrix, palierPrix, zonesLoyer, palierLoyer,
 } from './engine.js';
 import { loadMuni, unitsAround, getUnit, munisLoaded } from './data.js';
 import { environs, prosCons } from './analysis.js';
@@ -123,6 +123,7 @@ export async function renderUnit(ctx, id, coords) {
       ${kpi(`Prix au ${uniteLabel()}`, parAire(m2).replace(/ \/ (m²|pi²)$/, ''), ts?.medM2 ? `médiane ${parAire(ts.medM2).replace(/ \/ (m²|pi²)$/, '')}` : '')}
       ${kpi('Tendance annuelle', signedPct(muni.marche.g * 100), 'municipalité', muni.marche.g >= 0 ? 'up' : 'down')}
     </div>`;
+  const tx = taxesFoncieres(unit, muni, CONFIG.defauts.tauxTaxesFoncieresPct);
   const carac = section('Caractéristiques', `
     <div class="grid2">
       ${row('Année de construction', unit.an || '—')}
@@ -131,7 +132,10 @@ export async function renderUnit(ctx, id, coords) {
       ${row('Étages', unit.et || '—')}
       ${row('Logements', unit.lg || '—')}
       ${row('Implantation', LIENS[unit.li] || '—')}
-    </div>`, { note: 'Source : rôle d\'évaluation foncière (MAMH). Le propriétaire n\'est jamais affiché.' });
+      ${row('Taxes foncières estimées', `${money(tx.total)} / an`)}
+    </div>`, { note: `Source : rôle d'évaluation foncière (MAMH). Le propriétaire n'est jamais affiché. ${tx.taux
+      ? `Taxes : taux résidentiel ${muni.taxes.annee} de ${muni.nom} (${tx.taux.toFixed(4).replace('.', ',')} $ par 100 $, MAMH) et taxe scolaire approximative ; tarifs et taxes de secteur ou d'arrondissement en sus.`
+      : 'Taxes : estimation à 1 % de l\'évaluation (taux municipal non publié).'}` });
   let imm = null; let frais = null; let immHtml = '';
   if (unit.t === 'C') {
     imm = immeuble(unit, await unitsAround(unit.lat, unit.lon, 0), muni, meta);
@@ -211,7 +215,7 @@ export async function renderUnit(ctx, id, coords) {
   const st = {
     prix: est.valeur, misePct: CONFIG.defauts.misePct, taux: meta.hypotheque?.tauxAffiche5ans || 5,
     amort: CONFIG.defauts.amortissement,
-    taxes: Math.round((unit.vr * CONFIG.defauts.tauxTaxesFoncieresPct) / 100 / 10) * 10,
+    taxes: taxesFoncieres(unit, muni, CONFIG.defauts.tauxTaxesFoncieresPct).total,
     commission: CONFIG.defauts.commissionPct, revenu: 0,
     logements: Math.max(1, unit.lg || 1), loyer: loyerEstime(unit, muni) || 0,
     vacance: CONFIG.defauts.vacancePct, entretien: CONFIG.defauts.entretienPct,

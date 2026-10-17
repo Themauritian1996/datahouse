@@ -133,3 +133,11 @@ test('scores par profil : bornés et cohérents', () => {
   assert.ok(cher.acheteur.score < s.acheteur.score);
   assert.ok(cher.investisseur.score <= s.investisseur.score);
 });
+
+import { taxesFoncieres } from '../site/js/engine.js';
+test('taxes foncières : taux municipal + scolaire, repli à 1 %', () => {
+  const t = taxesFoncieres({ vr: 500000 }, { taxes: { tauxResidentiel: 0.6, annee: 2026 } });
+  assert.equal(t.municipale, 3000);
+  assert.equal(t.scolaire, Math.round((475000 * 0.0009) / 10) * 10);
+  assert.equal(taxesFoncieres({ vr: 500000 }, {}).total, 5000);
+});

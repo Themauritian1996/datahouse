@@ -199,10 +199,19 @@ def _gpkg(per_muni: int = 3500) -> Path:
     return path
 
 
+def _taxes() -> Path:
+    path = OUT / "taxes.csv"
+    rows = ["cod_geo,nom_organisme,CPALB01724,CPALB01726,CPALB01738",
+            "66023,Montréal,,0.4631,0.0950", "65005,Laval,,0.4973,", "23027,Québec,,0.6300,0.1200",
+            "43027,Sherbrooke,0.7400,,", "58227,Longueuil,,0.5800,"]
+    path.write_text("\n".join(rows), encoding="utf-8")
+    return path
+
+
 def build() -> dict:
     OUT.mkdir(parents=True, exist_ok=True)
     return {"boundaries": _boundaries(), "census": _census(), "rfu": _rfu(),
-            "cpi": _cpi(), "asking": _asking(), "gpkg": _gpkg()}
+            "cpi": _cpi(), "asking": _asking(), "gpkg": _gpkg(), "taxes": _taxes()}
 
 
 if __name__ == "__main__":

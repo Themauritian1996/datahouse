@@ -2,7 +2,7 @@
 import { CONFIG } from './config.js';
 import {
   analyseAcheteur, analyseVendeur, analyseInvestisseur, indiceRevente, median, scores, zonesPrix, palierPrix, zonesLoyer, palierLoyer,
-  loyerEstime, ecartComparables,
+  loyerEstime, ecartComparables, taxesFoncieres,
 } from './engine.js';
 import { prosCons, environs } from './analysis.js';
 import { fmt, uniteLabel } from './format.js';
@@ -376,7 +376,9 @@ export async function pdfReport(ctx, user, plan, opts = {}) {
     [L.terrain, A(unit.ter), L.logements, unit.lg || '—'],
     [`${L.prixAire} / ${F.uniteLabel(u2)}`, PA(m2), L.centile, pc != null ? (lang === 'en' ? `${pc}th` : `${pc}e`) : '—'],
     [L.tendance, `${F.signedPct(muni.marche.g * 100)} ${L.parAn}`, L.fc, muni.marche.fc ? F.dec(muni.marche.fc) : '—'],
+    [L.taxes, `${F.money(taxesFoncieres(unit, muni, CONFIG.defauts.tauxTaxesFoncieresPct).total)} ${L.parAn}`, L.roleLabel, F.money(unit.vr)],
   ], { columnStyles: { 0: { textColor: C.muted }, 2: { textColor: C.muted } } });
+  if (muni.taxes?.tauxResidentiel) para(L.taxesNote(muni.nom, muni.taxes.annee, F.dec(muni.taxes.tauxResidentiel, 4)), 8, C.muted);
 
   if (unit.t === 'C' && (imm || frais)) {
     h2(L.immeuble);

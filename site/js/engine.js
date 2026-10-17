@@ -158,6 +158,21 @@ export function fraisCondo(unit, nbUnites) {
   return { mensuel, bas: round(mensuel * 0.75, 5), haut: round(mensuel * 1.3, 5), parPi2: taux, facteurs };
 }
 
+/**
+ * Taxes foncières annuelles estimées : taux résidentiel adopté par la municipalité (MAMH, par 100 $
+ * d'évaluation) + taxe scolaire approximative (environ 0,09 $ par 100 $, au-delà de 25 000 $).
+ * Les taxes d'arrondissement, tarifs (eau, ordures) et taxes de secteur ne sont pas inclus.
+ */
+export function taxesFoncieres(unit, muni, tauxDefautPct = 1.0) {
+  const vr = unit.vr || 0;
+  const t = muni.taxes?.tauxResidentiel;
+  if (!t) return { total: round(vr * tauxDefautPct / 100, 10), municipale: null, scolaire: null, taux: null, source: 'defaut' };
+  const municipale = (vr * t) / 100;
+  const scolaire = Math.max(0, vr - 25000) * 0.0009;
+  return { total: round(municipale + scolaire, 10), municipale: round(municipale, 10), scolaire: round(scolaire, 10),
+    taux: t, annee: muni.taxes.annee, source: 'mamh' };
+}
+
 /** Écart (en %) entre la valeur au m² de la propriété et la médiane de ses comparables. */
 export function ecartComparables(unit, est, comps) {
   const m2 = unit.aire ? est.valeur / unit.aire : null;
