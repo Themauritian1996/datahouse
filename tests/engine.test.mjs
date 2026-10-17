@@ -62,3 +62,74 @@ test('estimation : valeur = rôle × ajustement, fourchette ordonnée', () => {
   const r = indiceRevente(unit, muni, pc);
   assert.ok(r.score >= 0 && r.score <= 100);
 });
+
+import { comparables, immeuble, fraisCondo, zonesPrix, palierPrix, zonesLoyer, palierLoyer, scores, palier } from '../site/js/engine.js';
+
+test('zones de prix : paliers acheteur, vendeur, investisseur', () => {
+  const est = { valeur: 500000, bas: 450000, haut: 550000, marge: 0.1 };
+  const st = { prix: 500000, logements: 3, loyer: 1400, vacance: 3, taxes: 5000, assurances: 2700, entretien: 5, gestion: 0 };
+  const z = zonesPrix(est, st);
+  assert.equal(z.acheteur.favorable[1], 475000);
+  assert.equal(palierPrix(z, 'acheteur', 460000), 'favorable');
+  assert.equal(palierPrix(z, 'acheteur', 500000), 'neutre');
+  assert.equal(palierPrix(z, 'vendeur', 540000), 'favorable');
+  assert.equal(palierPrix(z, 'acheteur', 540000), 'defavorable');
+  // RNE = 1400×3×12×0,97 × 0,95 − 7700 ≈ 38 746 → favorable sous 775 k$ (5 %), défavorable au-delà de 969 k$ (4 %)
+  assert.ok(Math.abs(z.investisseur.favorable[1] - 775000) <= 2000, z.investisseur.favorable[1]);
+  assert.equal(palierPrix(z, 'investisseur', 500000), 'favorable');
+});
+
+test('zones de loyer : équilibre et paliers', () => {
+  const z = zonesLoyer(1400, { prix: 600000, logements: 3, misePct: 20, taux: 5, amort: 25, taxes: 5000, assurances: 2700, vacance: 3, entretien: 5 });
+  assert.ok(z.equilibre > 1000 && z.equilibre < 2500, z.equilibre);
+  assert.equal(palierLoyer(z, 1200), 'defavorable');
+  assert.equal(palierLoyer(z, 1300), 'neutre');
+  assert.equal(palierLoyer(z, 1450), 'favorable');
+  assert.equal(palierLoyer(z, 1700), 'risque');
+});
+
+test('frais de copropriété estimés selon superficie, âge et taille', () => {
+  const f = fraisCondo({ t: 'C', aire: 80, an: 2018 }, 40);
+  assert.ok(f.mensuel > 200 && f.mensuel < 300, f.mensuel); // 861 pi² × 0,27 $
+  assert.ok(f.bas < f.mensuel && f.mensuel < f.haut);
+  assert.equal(fraisCondo({ t: 'U', aire: 80 }, 1), null);
+});
+
+test('comparables de condo : pas d\'unités du même immeuble, un par immeuble voisin', () => {
+  const muni = JSON.parse(fs.readFileSync(new URL('../pipeline/_out/data/muni/66023.json', import.meta.url)));
+  const munis = { 66023: muni };
+  const base = { t: 'C', muni: '66023', aire: 80, an: 2005, vr: 400000 };
+  const unit = { ...base, id: 'a', lat: 45.5, lon: -73.6 };
+  const units = [unit, { ...base, id: 'b', lat: 45.5, lon: -73.6 }, { ...base, id: 'c', lat: 45.5, lon: -73.6 },
+    { ...base, id: 'd', lat: 45.501, lon: -73.6 }, { ...base, id: 'e', lat: 45.501, lon: -73.6 }, { ...base, id: 'f', lat: 45.502, lon: -73.601 }];
+  const comps = comparables(unit, units, munis, meta);
+  assert.deepEqual(comps.map((c) => c.id).sort(), ['d', 'f']);
+  const imm = immeuble(unit, units, muni, meta);
+  assert.equal(imm.unites, 3);
+});
+
+test('comparables de plex : même nombre de logements en priorité', () => {
+  const muni = JSON.parse(fs.readFileSync(new URL('../pipeline/_out/data/muni/66023.json', import.meta.url)));
+  const base = { t: 'P', muni: '66023', aire: 250, an: 1925, vr: 800000 };
+  const unit = { ...base, id: 'x', lg: 3, lat: 45.5, lon: -73.6 };
+  const units = [unit, { ...base, id: 'duplex', lg: 2, lat: 45.5001, lon: -73.6 }, { ...base, id: 'triplex', lg: 3, lat: 45.503, lon: -73.6 },
+    { ...base, id: 'sixplex', lg: 6, lat: 45.5001, lon: -73.6 }];
+  const comps = comparables(unit, units, { 66023: muni }, meta, { max: 1 });
+  assert.equal(comps[0].id, 'triplex');
+  assert.ok(!comparables(unit, units, { 66023: muni }, meta).some((c) => c.id === 'sixplex'));
+});
+
+test('scores par profil : bornés et cohérents', () => {
+  const muni = JSON.parse(fs.readFileSync(new URL('../pipeline/_out/data/muni/66023.json', import.meta.url)));
+  const unit = { t: 'P', vr: 700000, aire: 250, an: 1930, lg: 3 };
+  const est = estimate(unit, muni, meta);
+  const st = { prix: est.valeur, logements: 3, loyer: 1500, vacance: 3, taxes: 6000, assurances: 2700, entretien: 5, gestion: 0, misePct: 20, taux: 5, amort: 25 };
+  const s = scores({ unit, muni, est, pc: 50, comps: [], st });
+  for (const k of ['acheteur', 'vendeur', 'investisseur']) {
+    assert.ok(s[k].score >= 0 && s[k].score <= 100, k);
+    assert.equal(s[k].palier, palier(s[k].score));
+  }
+  const cher = scores({ unit, muni, est, pc: 50, comps: [], st: { ...st, prix: est.valeur * 1.2 } });
+  assert.ok(cher.acheteur.score < s.acheteur.score);
+  assert.ok(cher.investisseur.score <= s.investisseur.score);
+});

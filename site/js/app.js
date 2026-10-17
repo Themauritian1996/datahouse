@@ -9,9 +9,11 @@ import * as auth from './auth.js';
 import { $, $$, toast, icon } from './ui.js';
 import { esc, kmoney } from './format.js';
 import { renderHome } from './home.js';
+import { getPrefs, setPrefs, onPrefs } from './prefs.js';
 
 const sheetEl = $('#sheet');
 let navCount = 0; // navigations internes (pour un « retour » qui reste dans l'application)
+let derniereUnite = getPrefs().unites;
 const pageEl = $('#page');
 const homeEl = $('#home');
 let homeReady = false;
@@ -200,6 +202,12 @@ function setupLegend() {
     draw(b.dataset.m);
   }));
   $('#legend-toggle').addEventListener('click', () => $('#legend').classList.toggle('show'));
+  $('#sat').addEventListener('click', (e) => {
+    const on = !ctx.carte.satellite;
+    ctx.carte.setSatellite(on);
+    e.currentTarget.classList.toggle('on', on);
+    e.currentTarget.setAttribute('aria-pressed', String(on));
+  });
   draw('v');
 }
 
@@ -229,6 +237,19 @@ function setupAccount() {
   $('#account').addEventListener('click', () => $('#menu').classList.toggle('show'));
   document.addEventListener('click', (e) => { if (!e.target.closest('#menu, #account')) $('#menu').classList.remove('show'); });
   $$('#menu a').forEach((a) => a.addEventListener('click', () => $('#menu').classList.remove('show')));
+  const majSeg = () => {
+    const p = getPrefs();
+    $$('#seg-u button').forEach((b) => b.classList.toggle('on', b.dataset.u === p.unites));
+    $$('#seg-l button').forEach((b) => b.classList.toggle('on', b.dataset.l === p.langueRapport));
+  };
+  $$('#seg-u button').forEach((b) => b.addEventListener('click', () => setPrefs({ unites: b.dataset.u })));
+  $$('#seg-l button').forEach((b) => b.addEventListener('click', () => setPrefs({ langueRapport: b.dataset.l })));
+  majSeg();
+  onPrefs((p) => {
+    majSeg();
+    // Les superficies s'affichent dans la nouvelle unité : on redessine la vue ouverte.
+    if (p.unites !== derniereUnite) { derniereUnite = p.unites; if (/^#\/(u|b|m|favoris|compte)/.test(location.hash)) route(); }
+  });
 }
 
 async function main() {

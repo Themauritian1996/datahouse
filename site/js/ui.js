@@ -50,6 +50,11 @@ export const icon = (name) => {
     download: '<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>',
     phone: '<rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/>',
     compare: '<path d="M8 4v16M16 4v16M3 8h5M16 16h5"/>',
+    up: '<path d="M7 11v9H4v-9zM7 11l4-8c1.7 0 2.6 1.2 2.3 2.8L12.8 9H19a2 2 0 0 1 2 2.3l-1.2 7A2 2 0 0 1 17.8 20H7"/>',
+    down: '<path d="M7 13V4H4v9zM7 13l4 8c1.7 0 2.6-1.2 2.3-2.8L12.8 15H19a2 2 0 0 0 2-2.3l-1.2-7A2 2 0 0 0 17.8 4H7"/>',
+    neutral: '<circle cx="12" cy="12" r="9"/><path d="M8 12h8"/>',
+    camera: '<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>',
+    building: '<path d="M5 21V4h10v17M15 9h4v12M9 8h2M9 12h2M9 16h2M3 21h18"/>',
   }[name] || '';
   return `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${p}</svg>`;
 };

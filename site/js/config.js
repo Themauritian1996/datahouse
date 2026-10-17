@@ -53,5 +53,9 @@ export const CONFIG = {
     assuranceParLogement: 900,
   },
 
+  // Photo de la façade (facultatif) : clé Google Maps avec l'API « Street View Static » activée,
+  // restreinte au domaine du site. Sans clé, la fiche affiche la vue aérienne et un lien vers Street View.
+  streetViewKey: '',
+
   courrielContact: 'bonjour@exemple.com',
 };

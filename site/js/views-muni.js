@@ -2,7 +2,7 @@
 import { loadMuni } from './data.js';
 import { prosCons } from './analysis.js';
 import { histogram, gauge, meter } from './charts.js';
-import { money, kmoney, pct, signedPct, num, num1, esc, date } from './format.js';
+import { money, kmoney, pct, signedPct, num, num1, esc, date, aire, parAire, uniteLabel } from './format.js';
 import { kpi, row, section, $$ } from './ui.js';
 import { TYPE_ORDER } from './engine.js';
 import { prosConsHtml, newsHtml } from './views-unit.js';
@@ -80,8 +80,8 @@ export async function renderMuni(ctx, code) {
       <div class="grid2">
         ${row('Valeur médiane estimée', money(s.medEst))}
         ${row('Moitié centrale', `${kmoney(s.p25)} à ${kmoney(s.p75)}`)}
-        ${row('Prix médian au m²', s.medM2 ? `${num(s.medM2)} $` : '—')}
-        ${row('Aire médiane', s.medAire ? `${num(s.medAire)} m²` : '—')}
+        ${row(`Prix médian au ${uniteLabel()}`, parAire(s.medM2))}
+        ${row('Aire médiane', aire(s.medAire))}
         ${row('Année médiane', s.medAnnee || '—')}
         ${row('Hausse rôle antérieur → actuel', s.croissance3ans != null ? signedPct(s.croissance3ans * 100) : '—')}
       </div>`);

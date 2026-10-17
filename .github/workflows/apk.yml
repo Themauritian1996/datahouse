@@ -32,6 +32,19 @@ jobs:
           npx capacitor-assets generate --android --iconBackgroundColor '#16181D' --splashBackgroundColor '#16181D' || echo "icônes : génération partielle"
           # Géolocalisation (bouton « ma position » de la carte)
           sed -i 's#<uses-permission android:name="android.permission.INTERNET" />#<uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />\n    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />#' android/app/src/main/AndroidManifest.xml
+          # Lien de retour de la connexion Google (ca.datahouse.app://auth) vers l'application
+          python3 - <<'PY'
+          p = 'android/app/src/main/AndroidManifest.xml'
+          s = open(p).read()
+          filtre = ('<intent-filter android:autoVerify="false"><action android:name="android.intent.action.VIEW" />'
+                    '<category android:name="android.intent.category.DEFAULT" /><category android:name="android.intent.category.BROWSABLE" />'
+                    '<data android:scheme="ca.datahouse.app" android:host="auth" /></intent-filter>')
+          if 'ca.datahouse.app" android:host="auth"' not in s:
+              i = s.index('</activity>')
+              s = s[:i] + filtre + s[i:]
+          open(p, 'w').write(s)
+          PY
+          grep -c 'android:host="auth"' android/app/src/main/AndroidManifest.xml
           # Numéro de version = numéro de compilation
           sed -i -E "s/versionCode [0-9]+/versionCode ${{ github.run_number }}/; s/versionName \"[^\"]+\"/versionName \"1.${{ github.run_number }}\"/" android/app/build.gradle
           # Même signature à chaque version (mises à jour par-dessus l'ancienne)

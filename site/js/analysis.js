@@ -1,6 +1,6 @@
 // Avantages et inconvénients d'un secteur : indicateurs officiels + OpenStreetMap.
 import { distance } from './engine.js';
-import { pct, signedPct, dist, kmoney } from './format.js';
+import { fmt } from './format.js';
 
 const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
 
@@ -75,69 +75,73 @@ export async function environs(lat, lon) {
   return res;
 }
 
-/** Liste d'avantages (+), d'inconvénients (−) et de points neutres (±). */
-export function prosCons({ muni, meta, unit, osm, est }) {
+/** Liste d'avantages (+), d'inconvénients (−) et de points neutres (±), en français ou en anglais. */
+export function prosCons({ muni, meta, unit, osm, est }, lang = 'fr') {
   const out = [];
-  const add = (signe, texte, pour = 'tous') => out.push({ signe, texte, pour });
+  const L = (fr, en) => (lang === 'en' ? en : fr);
+  const POUR = { tous: L('tous', 'all'), acheteur: L('acheteur', 'buyer'), investisseur: L('investisseur', 'investor') };
+  const add = (signe, texte, pour = 'tous') => out.push({ signe, texte, pour: POUR[pour] || pour, cle: pour });
+  const { pct, signedPct, dist, kmoney, num1 } = fmt(lang);
   const c = muni.recensement || {};
   const rep = meta.reperes || {};
 
   if (c.croissancePop != null) {
-    if (c.croissancePop >= 5) add('+', `Population en croissance (${signedPct(c.croissancePop)} entre 2016 et 2021) : demande soutenue.`);
-    else if (c.croissancePop <= 0) add('−', `Population stable ou en baisse (${signedPct(c.croissancePop)} entre 2016 et 2021).`);
+    if (c.croissancePop >= 5) add('+', L(`Population en croissance (${signedPct(c.croissancePop)} entre 2016 et 2021) : demande soutenue.`, `Growing population (${signedPct(c.croissancePop)} from 2016 to 2021): sustained demand.`));
+    else if (c.croissancePop <= 0) add('−', L(`Population stable ou en baisse (${signedPct(c.croissancePop)} entre 2016 et 2021).`, `Stable or declining population (${signedPct(c.croissancePop)} from 2016 to 2021).`));
   }
   const g = muni.marche?.g;
   if (g != null) {
-    if (g >= 0.06) add('±', `Valeurs en forte hausse (environ ${signedPct(g * 100)} par an) : favorable au vendeur, moins à l'acheteur.`);
-    else if (g <= 0.01) add('±', `Valeurs peu dynamiques (environ ${signedPct(g * 100)} par an) : meilleur pouvoir de négociation pour l'acheteur.`);
+    if (g >= 0.06) add('±', L(`Valeurs en forte hausse (environ ${signedPct(g * 100)} par an) : favorable au vendeur, moins à l'acheteur.`, `Values rising fast (about ${signedPct(g * 100)} per year): good for sellers, less so for buyers.`));
+    else if (g <= 0.01) add('±', L(`Valeurs peu dynamiques (environ ${signedPct(g * 100)} par an) : meilleur pouvoir de négociation pour l'acheteur.`, `Flat values (about ${signedPct(g * 100)} per year): more negotiating power for buyers.`));
   }
   if (c.revenuMenage && rep.revenuMenage) {
     const r = c.revenuMenage / rep.revenuMenage;
-    if (r >= 1.15) add('+', `Revenu médian des ménages supérieur au repère québécois (${kmoney(c.revenuMenage)} en 2020).`);
-    else if (r <= 0.85) add('−', `Revenu médian des ménages inférieur au repère québécois (${kmoney(c.revenuMenage)} en 2020).`);
+    if (r >= 1.15) add('+', L(`Revenu médian des ménages supérieur au repère québécois (${kmoney(c.revenuMenage)} en 2020).`, `Median household income above the Québec benchmark (${kmoney(c.revenuMenage)} in 2020).`));
+    else if (r <= 0.85) add('−', L(`Revenu médian des ménages inférieur au repère québécois (${kmoney(c.revenuMenage)} en 2020).`, `Median household income below the Québec benchmark (${kmoney(c.revenuMenage)} in 2020).`));
   }
   if (muni.ratioPrixRevenu) {
-    if (muni.ratioPrixRevenu >= 9) add('−', `Marché peu abordable : prix médian ≈ ${muni.ratioPrixRevenu.toFixed(1).replace('.', ',')} fois le revenu des ménages.`);
-    else if (muni.ratioPrixRevenu <= 5) add('+', `Marché abordable : prix médian ≈ ${muni.ratioPrixRevenu.toFixed(1).replace('.', ',')} fois le revenu des ménages.`);
+    const x = num1(muni.ratioPrixRevenu);
+    if (muni.ratioPrixRevenu >= 9) add('−', L(`Marché peu abordable : prix médian ≈ ${x} fois le revenu des ménages.`, `Low affordability: median price ≈ ${x} times household income.`));
+    else if (muni.ratioPrixRevenu <= 5) add('+', L(`Marché abordable : prix médian ≈ ${x} fois le revenu des ménages.`, `Affordable market: median price ≈ ${x} times household income.`));
   }
   if (c.pctProprio != null) {
-    if (c.pctProprio <= 45) add('+', `Forte proportion de locataires (${pct(100 - c.pctProprio, 0)}) : bassin locatif important.`, 'investisseur');
-    else if (c.pctProprio >= 75) add('+', `Secteur majoritairement propriétaire (${pct(c.pctProprio, 0)}) : quartier généralement stable.`, 'acheteur');
+    if (c.pctProprio <= 45) add('+', L(`Forte proportion de locataires (${pct(100 - c.pctProprio, 0)}) : bassin locatif important.`, `High share of renters (${pct(100 - c.pctProprio, 0)}): large rental pool.`), 'investisseur');
+    else if (c.pctProprio >= 75) add('+', L(`Secteur majoritairement propriétaire (${pct(c.pctProprio, 0)}) : quartier généralement stable.`, `Mostly owner-occupied (${pct(c.pctProprio, 0)}): usually a stable neighbourhood.`), 'acheteur');
   }
   if (c.pctInabordableLocataire != null) {
-    if (c.pctInabordableLocataire >= 33) add('−', `${pct(c.pctInabordableLocataire, 0)} des locataires consacrent plus de 30 % de leur revenu au logement : marge limitée pour hausser les loyers.`, 'investisseur');
-    else if (c.pctInabordableLocataire <= 18) add('+', `Seulement ${pct(c.pctInabordableLocataire, 0)} des locataires dépassent 30 % de leur revenu en loyer : demande solvable.`, 'investisseur');
+    if (c.pctInabordableLocataire >= 33) add('−', L(`${pct(c.pctInabordableLocataire, 0)} des locataires consacrent plus de 30 % de leur revenu au logement : marge limitée pour hausser les loyers.`, `${pct(c.pctInabordableLocataire, 0)} of renters spend over 30% of income on housing: limited room to raise rents.`), 'investisseur');
+    else if (c.pctInabordableLocataire <= 18) add('+', L(`Seulement ${pct(c.pctInabordableLocataire, 0)} des locataires dépassent 30 % de leur revenu en loyer : demande solvable.`, `Only ${pct(c.pctInabordableLocataire, 0)} of renters spend over 30% of income on rent: solvent demand.`), 'investisseur');
   }
-  if (c.croissanceRevenu != null && c.croissanceRevenu >= 20) add('+', `Revenu des ménages en forte hausse (${signedPct(c.croissanceRevenu, 0)} de 2015 à 2020, en dollars constants).`);
+  if (c.croissanceRevenu != null && c.croissanceRevenu >= 20) add('+', L(`Revenu des ménages en forte hausse (${signedPct(c.croissanceRevenu, 0)} de 2015 à 2020, en dollars constants).`, `Household income rising fast (${signedPct(c.croissanceRevenu, 0)} from 2015 to 2020, constant dollars).`));
   if (muni.rendementPlex != null) {
-    if (muni.rendementPlex >= 6) add('+', `Rendement brut des plex élevé (≈ ${pct(muni.rendementPlex)}).`, 'investisseur');
-    else if (muni.rendementPlex <= 4) add('−', `Rendement brut des plex faible (≈ ${pct(muni.rendementPlex)}) : misez sur la plus-value.`, 'investisseur');
+    if (muni.rendementPlex >= 6) add('+', L(`Rendement brut des plex élevé (≈ ${pct(muni.rendementPlex)}).`, `High gross yield on plexes (≈ ${pct(muni.rendementPlex)}).`), 'investisseur');
+    else if (muni.rendementPlex <= 4) add('−', L(`Rendement brut des plex faible (≈ ${pct(muni.rendementPlex)}) : misez sur la plus-value.`, `Low gross yield on plexes (≈ ${pct(muni.rendementPlex)}): rely on appreciation.`), 'investisseur');
   }
   const liq = muni.liquidite?.score;
   if (liq != null) {
-    if (liq >= 65) add('+', 'Marché liquide : la revente est généralement plus facile.');
-    else if (liq <= 35) add('−', 'Marché peu liquide : prévoir un délai de vente plus long.');
+    if (liq >= 65) add('+', L('Marché liquide : la revente est généralement plus facile.', 'Liquid market: resale is usually easier.'));
+    else if (liq <= 35) add('−', L('Marché peu liquide : prévoir un délai de vente plus long.', 'Thin market: expect a longer time to sell.'));
   }
   if (unit) {
-    if (unit.an && unit.an < 1950) add('−', `Bâtiment construit en ${unit.an} : inspection approfondie conseillée (fondation, électricité, plomberie, isolation).`);
-    else if (unit.an && unit.an >= 2010) add('+', `Construction récente (${unit.an}) : moins de travaux majeurs à prévoir à court terme.`);
-    if (unit.t === 'C') add('±', 'Copropriété : vérifiez le fonds de prévoyance, l\'étude du fonds et les procès-verbaux du syndicat.');
-    if (est && est.marge >= 0.15) add('±', 'Propriété atypique pour le secteur : estimation moins précise, une évaluation agréée est recommandée.');
+    if (unit.an && unit.an < 1950) add('−', L(`Bâtiment construit en ${unit.an} : inspection approfondie conseillée (fondation, électricité, plomberie, isolation).`, `Built in ${unit.an}: a thorough inspection is advised (foundation, wiring, plumbing, insulation).`));
+    else if (unit.an && unit.an >= 2010) add('+', L(`Construction récente (${unit.an}) : moins de travaux majeurs à prévoir à court terme.`, `Recent construction (${unit.an}): fewer major repairs expected soon.`));
+    if (unit.t === 'C') add('±', L('Copropriété : vérifiez le fonds de prévoyance, l\'étude du fonds et les procès-verbaux du syndicat.', 'Condo: check the contingency fund, the fund study and the syndicate\'s minutes.'));
+    if (est && est.marge >= 0.15) add('±', L('Propriété atypique pour le secteur : estimation moins précise, une évaluation agréée est recommandée.', 'Atypical property for the area: less precise estimate, a certified appraisal is recommended.'));
   }
   if (osm) {
     const o = osm;
-    if (o.rail.plusProche != null && o.rail.plusProche <= 1000) add('+', `Station de transport collectif structurant à ${dist(o.rail.plusProche)}${o.rail.nom ? ` (${o.rail.nom})` : ''}.`);
-    if (o.bus.plusProche != null && o.bus.plusProche <= 400) add('+', `Arrêt d'autobus à ${dist(o.bus.plusProche)}.`);
-    else if (o.bus.n === 0 && o.rail.n === 0) add('−', 'Peu ou pas de transport collectif à distance de marche.');
-    if (o.ecole.plusProche != null && o.ecole.plusProche <= 800) add('+', `École ou garderie à ${dist(o.ecole.plusProche)}.`, 'acheteur');
-    if (o.parc.plusProche != null && o.parc.plusProche <= 400) add('+', `Parc à ${dist(o.parc.plusProche)}.`);
-    if (o.epicerie.plusProche != null && o.epicerie.plusProche <= 800) add('+', `Épicerie à ${dist(o.epicerie.plusProche)}.`);
-    else if (o.epicerie.n === 0) add('−', 'Aucune épicerie à moins de 1 km.');
-    if (o.sante.plusProche != null && o.sante.plusProche <= 1000) add('+', `Pharmacie ou clinique à ${dist(o.sante.plusProche)}.`);
-    if (o.autoroute.n) add('−', `Autoroute à ${dist(o.autoroute.plusProche)} : bruit possible.`);
-    if (o.voieFerree.n) add('−', `Voie ferrée à ${dist(o.voieFerree.plusProche)} : bruit et vibrations possibles.`);
-    if (o.industriel.n) add('−', `Zone industrielle à ${dist(o.industriel.plusProche)}.`);
-    if (o.aeroport.n) add('±', `Aéroport ou aérodrome à ${dist(o.aeroport.plusProche)} : vérifiez les couloirs aériens.`);
+    if (o.rail.plusProche != null && o.rail.plusProche <= 1000) add('+', L(`Station de transport collectif structurant à ${dist(o.rail.plusProche)}`, `Rapid transit station ${dist(o.rail.plusProche)} away`) + (o.rail.nom ? ` (${o.rail.nom}).` : '.'));
+    if (o.bus.plusProche != null && o.bus.plusProche <= 400) add('+', L(`Arrêt d'autobus à ${dist(o.bus.plusProche)}.`, `Bus stop ${dist(o.bus.plusProche)} away.`));
+    else if (o.bus.n === 0 && o.rail.n === 0) add('−', L('Peu ou pas de transport collectif à distance de marche.', 'Little or no public transit within walking distance.'));
+    if (o.ecole.plusProche != null && o.ecole.plusProche <= 800) add('+', L(`École ou garderie à ${dist(o.ecole.plusProche)}.`, `School or daycare ${dist(o.ecole.plusProche)} away.`), 'acheteur');
+    if (o.parc.plusProche != null && o.parc.plusProche <= 400) add('+', L(`Parc à ${dist(o.parc.plusProche)}.`, `Park ${dist(o.parc.plusProche)} away.`));
+    if (o.epicerie.plusProche != null && o.epicerie.plusProche <= 800) add('+', L(`Épicerie à ${dist(o.epicerie.plusProche)}.`, `Grocery store ${dist(o.epicerie.plusProche)} away.`));
+    else if (o.epicerie.n === 0) add('−', L('Aucune épicerie à moins de 1 km.', 'No grocery store within 1 km.'));
+    if (o.sante.plusProche != null && o.sante.plusProche <= 1000) add('+', L(`Pharmacie ou clinique à ${dist(o.sante.plusProche)}.`, `Pharmacy or clinic ${dist(o.sante.plusProche)} away.`));
+    if (o.autoroute.n) add('−', L(`Autoroute à ${dist(o.autoroute.plusProche)} : bruit possible.`, `Highway ${dist(o.autoroute.plusProche)} away: possible noise.`));
+    if (o.voieFerree.n) add('−', L(`Voie ferrée à ${dist(o.voieFerree.plusProche)} : bruit et vibrations possibles.`, `Railway ${dist(o.voieFerree.plusProche)} away: possible noise and vibration.`));
+    if (o.industriel.n) add('−', L(`Zone industrielle à ${dist(o.industriel.plusProche)}.`, `Industrial area ${dist(o.industriel.plusProche)} away.`));
+    if (o.aeroport.n) add('±', L(`Aéroport ou aérodrome à ${dist(o.aeroport.plusProche)} : vérifiez les couloirs aériens.`, `Airport or airfield ${dist(o.aeroport.plusProche)} away: check flight paths.`));
   }
   return out;
 }

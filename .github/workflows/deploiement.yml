@@ -42,7 +42,7 @@ jobs:
         run: |
           V="${{ github.run_number }}"
           sed -i "s/__VERSION__/$V/g" site/index.html
-          sed -i -E "s#(from '\./[a-z-]+\.js)'#\1?v=$V'#g" site/js/*.js
+          sed -i -E "s#(from '\./[a-z0-9-]+\.js)'#\1?v=$V'#g" site/js/*.js
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

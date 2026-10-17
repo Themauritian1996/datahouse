@@ -1,5 +1,47 @@
 // Comptes utilisateurs : Firebase si configuré, sinon mode local (ce navigateur seulement).
 import { CONFIG } from './config.js';
+import { getPrefs, setPrefs, onPrefs } from './prefs.js';
+
+const natif = () => Boolean(window.Capacitor?.isNativePlatform?.());
+
+/**
+ * Connexion Google dans l'application Android : Google interdit sa page de connexion dans une vue web
+ * intégrée. On ouvre donc une page du site dans le navigateur du téléphone, qui renvoie un jeton Google
+ * à l'application par un lien ca.datahouse.app://auth ; l'application ouvre ensuite la session Firebase.
+ */
+function jetonGoogleNatif() {
+  const P = window.Capacitor?.Plugins || {};
+  if (!P.Browser || !P.App) {
+    return Promise.reject(Object.assign(new Error('Mettez à jour l\'application (nouvelle version de l\'APK) pour vous connecter avec Google.'), { code: 'maj' }));
+  }
+  const etat = (crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`).replace(/[^a-z0-9-]/gi, '');
+  const url = new URL('connexion-google.html', location.href);
+  url.search = `?etat=${etat}`;
+  return new Promise((resolve, reject) => {
+    let fini = false; const handles = [];
+    const finir = (fn, v) => {
+      if (fini) return;
+      fini = true;
+      clearTimeout(minuterie);
+      handles.forEach((h) => h?.remove?.());
+      P.Browser.close?.().catch(() => {});
+      fn(v);
+    };
+    const minuterie = setTimeout(() => finir(reject, Object.assign(new Error('délai'), { code: 'delai' })), 5 * 60 * 1000);
+    P.App.addListener('appUrlOpen', (ev) => {
+      const lien = String(ev?.url || '');
+      if (!lien.startsWith('ca.datahouse.app://auth')) return;
+      const q = new URLSearchParams(lien.split('?')[1] || '');
+      if (q.get('etat') !== etat) return;
+      if (q.get('idt')) finir(resolve, q.get('idt'));
+      else finir(reject, Object.assign(new Error(q.get('erreur') || 'Connexion annulée.'), { code: 'annule' }));
+    }).then((h) => handles.push(h));
+    // Navigateur fermé sans connexion : on laisse un court délai au lien de retour d'arriver.
+    P.Browser.addListener?.('browserFinished', () => setTimeout(() => finir(reject, Object.assign(new Error('annulé'), { code: 'annule' })), 2500))
+      .then((h) => handles.push(h));
+    P.Browser.open({ url: url.toString() }).catch((e) => finir(reject, e));
+  });
+}
 
 const FB = 'https://www.gstatic.com/firebasejs/11.0.2';
 const listeners = new Set();
@@ -101,7 +143,7 @@ function firebaseBackend(cfg) {
       if (!snap.exists()) {
         const pending = JSON.parse(sessionStorage.getItem('datahouse:nouveau') || '{}');
         const doc = { email: fbUser.email, nom: pending.nom || fbUser.displayName || '', profil: pending.profil || 'acheteur',
-          plan: 'gratuit', creeLe: new Date().toISOString() };
+          plan: 'gratuit', creeLe: new Date().toISOString(), prefs: getPrefs() };
         await fs.setDoc(ref, doc);
         return { uid: fbUser.uid, ...doc };
       }
@@ -114,7 +156,14 @@ function firebaseBackend(cfg) {
     async signIn({ email, password }) { await fa.signInWithEmailAndPassword(auth, email, password); },
     async signInGoogle(profil) {
       sessionStorage.setItem('datahouse:nouveau', JSON.stringify({ profil }));
-      await fa.signInWithPopup(auth, new fa.GoogleAuthProvider());
+      if (natif()) {
+        const idt = await jetonGoogleNatif();
+        await fa.signInWithCredential(auth, fa.GoogleAuthProvider.credential(idt));
+        return;
+      }
+      const provider = new fa.GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
+      await fa.signInWithPopup(auth, provider);
     },
     async signOut() { await fa.signOut(auth); },
     async update(patch) {
@@ -155,8 +204,16 @@ export const signInGoogle = wrap((profil) => backend.signInGoogle(profil));
 export const signOut = wrap(() => backend.signOut());
 export const updateProfile = wrap((p) => backend.update(p));
 export const resetPassword = (email) => backend.reset(email);
-// La connexion Google par fenêtre surgissante ne fonctionne pas dans l'application Android.
-export const canGoogle = () => backend?.mode === 'firebase' && !window.Capacitor?.isNativePlatform?.();
+// Google : fenêtre surgissante sur le Web, navigateur du téléphone dans l'application Android.
+export const canGoogle = () => backend?.mode === 'firebase';
+
+// Préférences : celles du compte s'appliquent à la connexion ; les changements sont enregistrés au compte.
+let dernierUid = null;
+onUser((u) => {
+  if (u && u.uid !== dernierUid && u.prefs) setPrefs(u.prefs);
+  dernierUid = u?.uid || null;
+});
+onPrefs((p) => { if (current && backend) backend.update({ prefs: p }).then(() => { current = { ...current, prefs: p }; }).catch(() => {}); });
 
 /** Active un forfait sans paiement — mode local (démonstration) seulement. */
 export const setPlanDemo = wrap(async (plan) => {

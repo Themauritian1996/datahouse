@@ -447,3 +447,98 @@ body.on-home .stage, body.on-home #demo { visibility: hidden; }
 }
 @media (prefers-reduced-motion: reduce) { .hero-plan canvas { transition: none; } }
 body.on-home .brand span { display: inline !important; }
+
+/* ---------- Photos de la propriété ---------- */
+.photos { margin: 0 0 12px; }
+.ph { border-radius: var(--radius); overflow: hidden; background: var(--surface-2); aspect-ratio: 9 / 5; display: grid; }
+.ph img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ph.duo { grid-template-columns: 1fr 1fr; gap: 4px; }
+.ph-load { background: linear-gradient(100deg, var(--surface-2) 30%, var(--line) 50%, var(--surface-2) 70%); background-size: 300% 100%; animation: ph 1.4s ease-in-out infinite; }
+@keyframes ph { from { background-position: 100% 0; } to { background-position: 0 0; } }
+@media (prefers-reduced-motion: reduce) { .ph-load { animation: none; } }
+.photos.vide .ph { aspect-ratio: auto; padding: 12px; }
+.photos figcaption { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; align-items: center; font-size: 13px; color: var(--muted); margin-top: 6px; }
+.photos figcaption span { display: inline-flex; align-items: center; gap: 6px; }
+.photos figcaption .ic { width: 16px; height: 16px; }
+.photos figcaption a { color: var(--text); font-weight: 600; }
+.photos figcaption small { font-size: 11px; }
+
+/* ---------- Pastilles de palier (pouces) ---------- */
+.palier { display: inline-flex; align-items: center; gap: 5px; font-weight: 600; font-size: 13px; padding: 2px 9px 2px 6px; border-radius: 999px; vertical-align: middle; white-space: nowrap; }
+.palier .ic { width: 16px; height: 16px; }
+.palier.favorable { background: var(--good-bg); color: var(--good); }
+.palier.neutre { background: var(--surface-2); color: var(--mid); }
+.palier.defavorable, .palier.risque { background: var(--bad-bg); color: var(--bad); }
+.flag .palier { margin-right: 4px; background: var(--surface); }
+
+/* ---------- Scores par profil ---------- */
+.scards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.scard { border-radius: 12px; padding: 10px 10px 8px; background: var(--surface-2); }
+.scard summary { list-style: none; cursor: pointer; }
+.scard summary::-webkit-details-marker { display: none; }
+.scard.favorable { background: var(--good-bg); }
+.scard.defavorable { background: var(--bad-bg); }
+.sc-n { font-size: 13px; font-weight: 600; color: var(--muted); }
+.sc-row { display: flex; align-items: baseline; gap: 4px; margin: 2px 0; }
+.sc-ico { align-self: center; display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; color: #fff; background: var(--mid); margin-right: 4px; }
+.sc-ico .ic { width: 17px; height: 17px; }
+.favorable .sc-ico { background: var(--good); }
+.defavorable .sc-ico { background: var(--bad); }
+.sc-v { font-family: var(--display); font-size: 30px; font-weight: 700; line-height: 1; }
+.scard small { color: var(--muted); font-size: 12px; }
+.favorable .sc-v, .favorable .sc-p { color: var(--good); }
+.defavorable .sc-v, .defavorable .sc-p { color: var(--bad); }
+.neutre .sc-p { color: var(--mid); }
+.sc-p { font-size: 13px; font-weight: 600; }
+.sc-f { list-style: none; margin: 8px 0 0; padding: 8px 0 0; border-top: 1px solid color-mix(in srgb, var(--text) 12%, transparent); display: grid; gap: 6px; font-size: 12px; }
+.sc-f li { display: grid; gap: 3px; }
+.scard.na { opacity: .7; }
+@media (max-width: 420px) { .sc-v { font-size: 26px; } .scards { gap: 6px; } .scard { padding: 9px 8px 7px; } }
+
+/* ---------- Zones de prix et de loyer ---------- */
+.zones { display: grid; gap: 10px; }
+.zrow { display: grid; grid-template-columns: 82px 1fr; grid-template-areas: 'lab track' '. cap'; column-gap: 10px; row-gap: 3px; align-items: center; }
+.zlab { grid-area: lab; font-size: 13px; font-weight: 600; }
+.ztrack { grid-area: track; position: relative; height: 14px; border-radius: 7px; background: var(--surface-2); overflow: visible; }
+.zcap { grid-area: cap; font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 4px; }
+.zcap .ic { width: 14px; height: 14px; color: var(--good); }
+.zseg { position: absolute; top: 0; bottom: 0; }
+.zseg.favorable { background: color-mix(in srgb, var(--good) 55%, transparent); }
+.zseg.neutre { background: color-mix(in srgb, var(--mid) 30%, transparent); }
+.zseg.defavorable, .zseg.risque { background: color-mix(in srgb, var(--bad) 45%, transparent); }
+.zseg.risque { background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--bad) 45%, transparent) 0 4px, transparent 4px 8px); }
+.ztrack .zseg:first-child { border-radius: 7px 0 0 7px; }
+.zmark { position: absolute; top: -4px; bottom: -4px; width: 3px; margin-left: -1.5px; border-radius: 2px; background: var(--text); box-shadow: 0 0 0 2px var(--surface); }
+.zmark.prix { background: var(--bad); }
+.zmark.eq { background: var(--muted); }
+.zlegend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--muted); margin-top: 2px; }
+.zlegend span { display: inline-flex; align-items: center; gap: 6px; }
+.zmark-l { display: inline-block; width: 3px; height: 12px; border-radius: 2px; background: var(--text); }
+.zmark-l.prix { background: var(--bad); }
+.zmark-l.eq { background: var(--muted); }
+.zlegend b { color: var(--text); }
+.ztags { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; font-size: 13px; margin-top: 12px; color: var(--muted); }
+.ztag { display: inline-flex; align-items: center; gap: 6px; color: var(--text); }
+
+/* ---------- Comparables à 5 colonnes ---------- */
+.comps .tr { grid-template-columns: 1fr 52px 70px 42px 60px; gap: 6px; }
+
+/* ---------- Menu du rapport PDF ---------- */
+.pdf-wrap { position: relative; }
+.pdf-menu { position: absolute; top: 50px; left: 0; z-index: 20; background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+  box-shadow: var(--shadow); padding: 6px; display: flex; flex-direction: column; min-width: 220px; }
+.pdf-menu[hidden] { display: none; }
+.pdf-menu > button { text-align: left; padding: 11px 12px; border: 0; background: none; border-radius: 10px; font-weight: 600; cursor: pointer; }
+.pdf-menu > button:hover { background: var(--surface-2); }
+.pdf-u { display: flex; align-items: center; gap: 6px; padding: 8px 12px 6px; font-size: 13px; color: var(--muted); border-top: 1px solid var(--line); margin-top: 4px; }
+.pdf-u button, .seg button { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 4px 9px; font-size: 13px; cursor: pointer; }
+.pdf-u button.on, .seg button.on { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+
+/* ---------- Préférences dans le menu ---------- */
+.menu-prefs { display: grid; grid-template-columns: auto auto; justify-content: space-between; align-items: center; gap: 8px 12px; padding: 10px 12px 6px; margin-top: 4px; border-top: 1px solid var(--line); font-size: 14px; color: var(--muted); }
+.seg { display: inline-flex; gap: 4px; }
+
+/* ---------- Connexion Google ---------- */
+.or { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; margin: 14px 0 10px; }
+.or::before, .or::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+.btn.google .ic.g { stroke: none; }

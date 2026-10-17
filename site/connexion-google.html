@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="fr-CA">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Connexion Google · DataHouse</title>
+  <style>
+    @font-face { font-family: Barlow; font-weight: 500; src: url(fonts/barlow-latin-500-normal.woff2) format('woff2'); }
+    @font-face { font-family: Barlow; font-weight: 700; src: url(fonts/barlow-latin-700-normal.woff2) format('woff2'); }
+    :root { --bg: #f3f5f4; --surface: #fff; --text: #16181d; --muted: #5d6662; --line: #dde2df; --brand: #1e7a4f; }
+    @media (prefers-color-scheme: dark) { :root { --bg: #0f1113; --surface: #171a1d; --text: #eef1ef; --muted: #a4ada8; --line: #2b3035; --brand: #4cc58a; } }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: var(--bg); color: var(--text);
+      font: 500 16px/1.45 Barlow, system-ui, sans-serif; padding: 24px 16px; }
+    main { width: 100%; max-width: 380px; background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 28px 22px; text-align: center; }
+    h1 { font-size: 24px; margin: 6px 0 8px; }
+    p { color: var(--muted); margin: 0 0 20px; }
+    button, a.btn { display: flex; width: 100%; align-items: center; justify-content: center; gap: 10px; height: 50px; border-radius: 25px;
+      border: 1px solid var(--line); background: var(--surface); color: var(--text); font: inherit; font-weight: 700; cursor: pointer; text-decoration: none; }
+    a.btn.primary { background: var(--brand); border-color: var(--brand); color: #fff; margin-top: 12px; }
+    button:disabled { opacity: .6; }
+    svg { width: 20px; height: 20px; }
+    .err { color: #b8432f; }
+    .logo { width: 36px; height: 36px; }
+  </style>
+</head>
+<body>
+  <main>
+    <svg viewBox="0 0 32 32" class="logo" aria-hidden="true"><path d="M4 15 16 5l12 10v12H4z" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linejoin="round"/><path d="M12 27v-7h8v7" fill="none" stroke="currentColor" stroke-width="2.6"/></svg>
+    <h1>Connexion à DataHouse</h1>
+    <p id="msg">Choisissez votre compte Google. Vous reviendrez ensuite automatiquement dans l'application.</p>
+    <button id="go" type="button">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M21.6 12.2c0-.7-.1-1.4-.2-2H12v3.8h5.4a4.6 4.6 0 0 1-2 3v2.5h3.2c1.9-1.7 3-4.3 3-7.3z"/><path fill="#34A853" d="M12 22c2.7 0 5-.9 6.6-2.4l-3.2-2.5c-.9.6-2 1-3.4 1-2.6 0-4.8-1.8-5.6-4.1H3.1v2.6A10 10 0 0 0 12 22z"/><path fill="#FBBC05" d="M6.4 14c-.2-.6-.3-1.3-.3-2s.1-1.4.3-2V7.4H3.1a10 10 0 0 0 0 9.2z"/><path fill="#EA4335" d="M12 5.9c1.5 0 2.8.5 3.8 1.5l2.9-2.9A10 10 0 0 0 3.1 7.4L6.4 10c.8-2.3 3-4.1 5.6-4.1z"/></svg>
+      <span>Continuer avec Google</span>
+    </button>
+    <a class="btn primary" id="retour" hidden>Retourner dans l'application</a>
+  </main>
+  <script type="module">
+    import { CONFIG } from './js/config.js';
+    const FB = 'https://www.gstatic.com/firebasejs/11.0.2';
+    const etat = (new URLSearchParams(location.search).get('etat') || '').replace(/[^a-z0-9-]/gi, '');
+    const msg = document.getElementById('msg');
+    const go = document.getElementById('go');
+    const retour = document.getElementById('retour');
+    // Lien de retour vers l'application (format « intent » de Chrome, le plus fiable sur Android).
+    const lien = (q) => `intent://auth?${q}&etat=${etat}#Intent;scheme=ca.datahouse.app;package=ca.datahouse.app;end`;
+    const renvoyer = (q) => {
+      retour.href = lien(q);
+      retour.hidden = false;
+      location.href = lien(q);
+    };
+    let fa; let auth;
+    async function init() {
+      const [app, a] = await Promise.all([import(`${FB}/firebase-app.js`), import(`${FB}/firebase-auth.js`)]);
+      fa = a;
+      auth = a.getAuth(app.initializeApp(CONFIG.firebase));
+      // Retour d'une redirection (repli si la fenêtre surgissante est bloquée)
+      const res = await a.getRedirectResult(auth).catch(() => null);
+      if (res) terminer(res);
+    }
+    async function terminer(res) {
+      const cred = fa.GoogleAuthProvider.credentialFromResult(res);
+      if (!cred?.idToken) throw new Error('jeton absent');
+      msg.textContent = 'Connexion réussie. Retour dans l\'application…';
+      go.hidden = true;
+      await fa.signOut(auth).catch(() => {});
+      renvoyer(`idt=${encodeURIComponent(cred.idToken)}`);
+    }
+    const ready = init().catch(() => { msg.innerHTML = '<span class="err">Service de connexion indisponible. Vérifiez la connexion Internet.</span>'; });
+    go.addEventListener('click', async () => {
+      await ready;
+      if (!fa) return;
+      go.disabled = true;
+      const provider = new fa.GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
+      try {
+        terminer(await fa.signInWithPopup(auth, provider));
+      } catch (e) {
+        go.disabled = false;
+        if (e?.code === 'auth/popup-blocked' || e?.code === 'auth/operation-not-supported-in-this-environment') {
+          await fa.signInWithRedirect(auth, provider);
+          return;
+        }
+        if (e?.code === 'auth/popup-closed-by-user' || e?.code === 'auth/cancelled-popup-request') return;
+        msg.innerHTML = '<span class="err">La connexion n\'a pas abouti. Réessayez.</span>';
+      }
+    });
+    if (!etat) msg.innerHTML = '<span class="err">Ouvrez cette page depuis l\'application DataHouse.</span>';
+  </script>
+</body>
+</html>

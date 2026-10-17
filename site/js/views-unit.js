@@ -2,12 +2,15 @@
 import { CONFIG } from './config.js';
 import {
   estimate, comparables, percentile, median, analyseAcheteur, analyseVendeur, analyseInvestisseur,
-  loyerEstime, indiceRevente,
+  loyerEstime, indiceRevente, immeuble, fraisCondo, ecartComparables, scores, zonesPrix, palierPrix, zonesLoyer, palierLoyer,
 } from './engine.js';
 import { loadMuni, unitsAround, getUnit, munisLoaded } from './data.js';
 import { environs, prosCons } from './analysis.js';
-import { histogram, gauge, meter, rangeBar } from './charts.js';
-import { money, kmoney, pct, signedPct, num, num1, dist, esc, date } from './format.js';
+import { histogram, gauge, meter, rangeBar, zonesBars, scoreCards, palierTag } from './charts.js';
+import { money, kmoney, pct, signedPct, num, num1, dist, esc, date, aire, parAire, uniteLabel } from './format.js';
+import { vueAerienne, photoFacade, lienFacade, ORTHO_CREDIT } from './photo.js';
+import { titreComparables, FACTEURS } from './i18n.js';
+import { getPrefs, setPrefs } from './prefs.js';
 import { $, $$, kpi, row, section, field, val, icon, toast } from './ui.js';
 import * as auth from './auth.js';
 import { synthese, pdfReport, saveFile, shareLink, comparablesCsv, isNative } from './report.js';
@@ -47,7 +50,7 @@ export async function renderBuilding(ctx, ids, coords) {
     <section class="card"><h3>Unités</h3>
       <div class="list">${list.map(({ u, e }) => `
         <button class="list-item" data-id="${esc(u.id)}">
-          <span><b>${esc(u.adr.split(',')[1]?.trim() || u.adr)}</b><small>${u.aire ? `${num(u.aire)} m²` : ''}${u.an ? ` · ${u.an}` : ''}</small></span>
+          <span><b>${esc(u.adr.split(',')[1]?.trim() || u.adr)}</b><small>${u.aire ? aire(u.aire) : ''}${u.an ? ` · ${u.an}` : ''}</small></span>
           <span class="li-v">${kmoney(e.valeur)}</span>
         </button>`).join('')}
       </div>
@@ -83,10 +86,20 @@ export async function renderUnit(ctx, id, coords) {
       <div class="sh-actions">
         <button class="btn icon-btn" id="fav" title="Ajouter aux favoris" aria-label="Favori">${icon('star')}</button>
         <button class="btn icon-btn" id="share" title="Partager" aria-label="Partager">${icon('share')}</button>
-        <button class="btn" id="pdf" title="Télécharger le rapport PDF">${icon('download')}<span>Rapport PDF</span></button>
+        <span class="pdf-wrap"><button class="btn" id="pdf" title="Télécharger le rapport PDF" aria-haspopup="true">${icon('download')}<span>Rapport PDF</span></button>
+          <span class="pdf-menu" id="pdf-menu" hidden>
+            <button data-lang="fr">Rapport en français</button><button data-lang="en">Report in English</button>
+            <span class="pdf-u">Superficies : <button data-u="m2">m²</button><button data-u="pi2">pi²</button></span>
+          </span></span>
         ${isNative() ? '' : `<button class="btn icon-btn" id="print" title="Imprimer" aria-label="Imprimer">${icon('print')}</button>`}
       </div>
     </div>`;
+  const photo = `
+    <figure class="photos" id="photos">
+      <div class="ph" id="ph-aer"><div class="ph-load"></div></div>
+      <figcaption><span id="ph-cap">${icon('camera')} Vue aérienne</span>
+        <a href="${lienFacade(unit.lat, unit.lon)}" target="_blank" rel="noopener">Voir la façade (Street View)</a></figcaption>
+    </figure>`;
   const hero = `
     <section class="hero">
       <div class="eyebrow">Valeur marchande estimée aujourd'hui</div>
@@ -107,25 +120,43 @@ export async function renderUnit(ctx, id, coords) {
     </section>`;
   const kpis = `<div class="kpis">
       ${kpi(`Rôle ${muni.role.annee || ''}`, kmoney(unit.vr), unit.va ? `rôle antérieur ${kmoney(unit.va)}` : '')}
-      ${kpi('Prix au m²', m2 ? `${num(m2)} $` : '—', ts?.medM2 ? `médiane ${num(ts.medM2)} $` : '')}
+      ${kpi(`Prix au ${uniteLabel()}`, parAire(m2).replace(/ \/ (m²|pi²)$/, ''), ts?.medM2 ? `médiane ${parAire(ts.medM2).replace(/ \/ (m²|pi²)$/, '')}` : '')}
       ${kpi('Tendance annuelle', signedPct(muni.marche.g * 100), 'municipalité', muni.marche.g >= 0 ? 'up' : 'down')}
     </div>`;
   const carac = section('Caractéristiques', `
     <div class="grid2">
       ${row('Année de construction', unit.an || '—')}
-      ${row('Aire habitable (étages)', unit.aire ? `${num(unit.aire)} m² (${num(unit.aire * 10.764)} pi²)` : '—')}
-      ${row('Terrain', unit.ter ? `${num(unit.ter)} m²` : '—')}
+      ${row('Aire habitable (étages)', aire(unit.aire))}
+      ${row('Terrain', aire(unit.ter))}
       ${row('Étages', unit.et || '—')}
       ${row('Logements', unit.lg || '—')}
       ${row('Implantation', LIENS[unit.li] || '—')}
     </div>`, { note: 'Source : rôle d\'évaluation foncière (MAMH). Le propriétaire n\'est jamais affiché.' });
+  let imm = null; let frais = null; let immHtml = '';
+  if (unit.t === 'C') {
+    imm = immeuble(unit, await unitsAround(unit.lat, unit.lon, 0), muni, meta);
+    frais = fraisCondo(unit, imm?.unites);
+    if (imm || frais) {
+      immHtml = section('L\'immeuble', `<div class="grid2">
+        ${imm ? row('Unités de copropriété', num(imm.unites)) : ''}
+        ${imm?.etages ? row('Étages', imm.etages) : ''}
+        ${imm && imm.unites > 1 ? row('Valeur médiane des unités', kmoney(imm.medianeValeur)) : ''}
+        ${imm && imm.unites > 1 ? row('Plus basse à plus haute', `${kmoney(imm.min)} à ${kmoney(imm.max)}`) : ''}
+        ${imm?.centile != null ? row('Rang de cette unité', `plus chère que ${imm.centile} % des unités`) : ''}
+        ${imm?.medianeAire ? row('Superficie médiane', aire(imm.medianeAire)) : ''}
+        ${frais ? row('Frais de copropriété estimés', `${money(frais.mensuel)} / mois`) : ''}
+        ${frais ? row('Fourchette des frais', `${money(frais.bas)} à ${money(frais.haut)}`) : ''}
+      </div>`, { note: 'Frais estimés selon la superficie, l\'âge et la taille de l\'immeuble (repère québécois : 0,25 $ à 0,40 $ par pi² par mois). Les frais réels figurent au budget du syndicat ; demandez aussi l\'étude du fonds de prévoyance.' });
+    }
+  }
   const position = ts ? section(`Position parmi les ${typeLabel.toLowerCase()}s de ${muni.nom}`, `
       ${histogram(ts.hist, est.valeur)}
       <p class="lead">${pc != null ? `Plus élevée que <b>${pc} %</b> des propriétés comparables de la municipalité. ` : ''}
       Médiane : <b>${kmoney(ts.medEst)}</b> (moitié centrale : ${kmoney(ts.p25)} à ${kmoney(ts.p75)}).</p>`) : '';
 
-  ctx.sheet.open(`${head}${hero}${kpis}${carac}${position}<div id="gated"></div>`);
+  ctx.sheet.open(`${head}${photo}${hero}${kpis}${carac}${immHtml}${position}<div id="gated"></div>`);
   const body = ctx.sheet.body;
+  chargerPhotos(body, unit);
 
   $('#fav', body).addEventListener('click', async () => {
     if (!auth.getUser()) { ctx.navigate('#/compte'); toast('Connectez-vous pour enregistrer des favoris.'); return; }
@@ -162,17 +193,18 @@ export async function renderUnit(ctx, id, coords) {
     return;
   }
 
-  // Comparables
+  // Comparables : condos d'autres immeubles, plex du même nombre de logements, maisons semblables.
   const around = await unitsAround(unit.lat, unit.lon, 1);
   const comps = comparables(unit, around, munisLoaded, meta);
   const compM2 = median(comps.map((c) => c.m2));
-  const compsHtml = comps.length ? section('Propriétés comparables à proximité', `
-      <div class="table"><div class="tr th"><span>Adresse</span><span>Dist.</span><span>Aire</span><span>Est.</span></div>
+  const ecart = ecartComparables(unit, est, comps);
+  const compsHtml = comps.length ? section(titreComparables(unit), `
+      <div class="table comps"><div class="tr th"><span>Adresse</span><span>Dist.</span><span>Aire</span><span>${unit.t === 'P' ? 'Log.' : 'Année'}</span><span>Est.</span></div>
       ${comps.map((c) => `<a class="tr" href="#/u/${encodeURIComponent(c.id)}@${c.lat},${c.lon}">
-        <span>${esc(c.adr)}</span><span>${dist(c.d)}</span><span>${c.aire ? `${num(c.aire)} m²` : '—'}</span><span>${kmoney(c.est)}</span></a>`).join('')}
+        <span>${esc(c.adr)}</span><span>${dist(c.d)}</span><span>${aire(c.aire)}</span><span>${unit.t === 'P' ? (c.lg || '—') : (c.an || '—')}</span><span>${kmoney(c.est)}</span></a>`).join('')}
       </div>
-      ${compM2 && m2 ? `<p class="lead">Prix au m² des comparables : <b>${num(compM2)} $</b> (cette propriété : ${num(m2)} $,
-        ${signedPct(((m2 - compM2) / compM2) * 100, 0)}).</p>` : ''}`,
+      ${compM2 && m2 ? `<p class="lead">Prix au ${uniteLabel()} des comparables : <b>${parAire(compM2)}</b> (cette propriété : ${parAire(m2)},
+        ${signedPct(ecart, 0)}).</p>` : ''}`,
   { note: 'Valeurs estimées par la même méthode, à partir du rôle d\'évaluation. Ce ne sont pas des prix de vente. '
     + '<a href="#" id="csv">Exporter en CSV</a>' }) : '';
 
@@ -184,15 +216,23 @@ export async function renderUnit(ctx, id, coords) {
     logements: Math.max(1, unit.lg || 1), loyer: loyerEstime(unit, muni) || 0,
     vacance: CONFIG.defauts.vacancePct, entretien: CONFIG.defauts.entretienPct,
     assurances: CONFIG.defauts.assuranceParLogement * Math.max(1, unit.lg || 1), gestion: 0,
+    fraisCondo: frais?.mensuel || 0,
   };
+  if (unit.t === 'C') st.assurances = 400; // l'assurance de l'immeuble est incluse dans les frais de copropriété
   const order = tabOrder(user.profil);
-  const resume = section('Synthèse', `<p class="synth">${esc(synthese({ unit, muni, est, pc, comps, st, meta }))}</p>`);
-  gated.innerHTML = `${resume}${compsHtml}
+  const resume = section('Synthèse', `<p class="synth">${esc(synthese({ unit, muni, est, pc, comps, st, meta, imm, frais }))}</p>`);
+  gated.innerHTML = `${resume}<div id="decision"></div>${compsHtml}
     <nav class="tabs" role="tablist">${order.map((k, i) => `<button role="tab" class="tab${i ? '' : ' on'}" data-tab="${k}">${TABS[k]}</button>`).join('')}</nav>
     <div id="tabpanel" class="tabpanel"></div>
     ${Number.isFinite(quota.restant) ? `<p class="note center">Analyses restantes ce mois-ci : ${quota.restant}</p>` : ''}`;
   const panel = $('#tabpanel', body);
-  const ctxTab = { unit, muni, est, meta, st, pc, comps };
+  const ctxTab = { unit, muni, est, meta, st, pc, comps, imm, frais, osm: null };
+  const decision = $('#decision', body);
+  let tDecision = null;
+  ctxTab.majDecision = () => { clearTimeout(tDecision); tDecision = setTimeout(() => decision.isConnected && (decision.innerHTML = decisionHtml(ctxTab)), 120); };
+  st.onChange = ctxTab.majDecision;
+  decision.innerHTML = decisionHtml(ctxTab);
+  environs(unit.lat, unit.lon).then((osm) => { if (osm) { ctxTab.osm = osm; ctxTab.majDecision(); } }).catch(() => {});
   const show = (k) => {
     $$('.tab', body).forEach((t) => t.classList.toggle('on', t.dataset.tab === k));
     RENDER[k](panel, ctxTab);
@@ -211,15 +251,27 @@ export async function renderUnit(ctx, id, coords) {
     return true;
   };
   $('#print', body)?.addEventListener('click', () => { if (!needPro()) printReport(ctxTab, user); });
-  $('#pdf', body).addEventListener('click', async () => {
+  const menu = $('#pdf-menu', body);
+  const majMenu = () => $$('[data-u]', menu).forEach((b) => b.classList.toggle('on', b.dataset.u === getPrefs().unites));
+  $('#pdf', body).addEventListener('click', (e) => {
+    e.stopPropagation();
     if (needPro()) return;
+    majMenu();
+    menu.hidden = !menu.hidden;
+  });
+  document.addEventListener('click', (e) => { if (!e.target.closest('.pdf-wrap')) menu.hidden = true; });
+  $$('[data-u]', menu).forEach((b) => b.addEventListener('click', (e) => { e.stopPropagation(); setPrefs({ unites: b.dataset.u }, { silencieux: true }); majMenu(); }));
+  $$('[data-lang]', menu).forEach((b) => b.addEventListener('click', async () => {
+    menu.hidden = true;
+    const lang = b.dataset.lang;
+    setPrefs({ langueRapport: lang }, { silencieux: true });
     const btn = $('#pdf', body);
     btn.disabled = true;
-    btn.querySelector('span').textContent = 'Préparation…';
+    btn.querySelector('span').textContent = lang === 'en' ? 'Preparing…' : 'Préparation…';
     try {
-      const { blob, filename } = await pdfReport(ctxTab, auth.getUser(), auth.forfait());
+      const { blob, filename } = await pdfReport(ctxTab, auth.getUser(), auth.forfait(), { lang, unites: getPrefs().unites });
       await saveFile(blob, filename, 'Rapport DataHouse');
-      toast('Rapport PDF prêt.');
+      toast(lang === 'en' ? 'PDF report ready.' : 'Rapport PDF prêt.');
     } catch (err) {
       console.error(err);
       toast('Impossible de générer le PDF pour le moment.', 'warn');
@@ -227,13 +279,13 @@ export async function renderUnit(ctx, id, coords) {
       btn.disabled = false;
       btn.querySelector('span').textContent = 'Rapport PDF';
     }
-  });
+  }));
 }
 
 function bindInputs(panel, st, map, recalc) {
   for (const [id, key] of Object.entries(map)) {
     const el = $(`#${id}`, panel);
-    el?.addEventListener('input', () => { st[key] = val(id, panel); recalc(); });
+    el?.addEventListener('input', () => { st[key] = val(id, panel); recalc(); st.onChange?.(); });
   }
   recalc();
 }
@@ -248,19 +300,24 @@ const RENDER = {
         ${field('a-taux', 'Taux hypothécaire', st.taux, { suffix: '%', step: 0.05 })}
         ${field('a-amort', 'Amortissement', st.amort, { suffix: 'ans', step: 1 })}
         ${field('a-taxes', 'Taxes foncières / an', st.taxes, { suffix: '$', step: 50 })}
+        ${unit.t === 'C' ? field('a-frais', 'Frais de copropriété / mois', st.fraisCondo, { suffix: '$', step: 10 }) : ''}
         ${field('a-revenu', 'Revenu du ménage (optionnel)', st.revenu || '', { suffix: '$', step: 1000 })}
       </div>`, { note: tauxNote })}
       <div id="a-out"></div>`;
-    bindInputs(panel, st, { 'a-prix': 'prix', 'a-mise': 'misePct', 'a-taux': 'taux', 'a-amort': 'amort', 'a-taxes': 'taxes', 'a-revenu': 'revenu' }, () => {
+    bindInputs(panel, st, { 'a-prix': 'prix', 'a-mise': 'misePct', 'a-taux': 'taux', 'a-amort': 'amort', 'a-taxes': 'taxes', 'a-revenu': 'revenu', 'a-frais': 'fraisCondo' }, () => {
       const r = analyseAcheteur({ prix: st.prix, misePct: st.misePct, taux: st.taux, amort: st.amort, code: muni.code, meta,
-        taxesAnnuelles: st.taxes, revenu: st.revenu, fraisNotaire: CONFIG.defauts.fraisNotaire,
+        taxesAnnuelles: st.taxes, revenu: st.revenu, fraisNotaire: CONFIG.defauts.fraisNotaire, fraisCondo: st.fraisCondo,
         inspection: CONFIG.defauts.inspection, chauffageMensuel: CONFIG.defauts.chauffageMensuel });
-      let pos = '';
-      if (st.prix > est.haut) pos = `<p class="flag bad">Ce prix dépasse le haut de la fourchette estimée (${kmoney(est.haut)}). Négociez ou justifiez par l'état et les rénovations.</p>`;
-      else if (st.prix < est.bas) pos = `<p class="flag good">Ce prix est sous la fourchette estimée (${kmoney(est.bas)}) : bonne affaire potentielle, vérifiez l'état du bâtiment.</p>`;
-      else pos = '<p class="flag">Ce prix se situe dans la fourchette estimée.</p>';
+      const zp = zonesPrix(est, st);
+      const pa = palierPrix(zp, 'acheteur', st.prix);
+      const txt = {
+        favorable: `Bon prix pour l'acheteur : sous ${kmoney(zp.acheteur.favorable[1])}. Vérifiez l'état du bâtiment, un prix bas a souvent une raison.`,
+        neutre: `Prix dans la zone juste (${kmoney(zp.acheteur.neutre[0])} à ${kmoney(zp.acheteur.neutre[1])}).`,
+        defavorable: `Prix élevé pour l'acheteur : au-delà de ${kmoney(zp.acheteur.defavorable[0])}. Négociez ou faites-le justifier par l'état et les rénovations.`,
+      }[pa];
+      const pos = `<div class="flag ${pa === 'favorable' ? 'good' : pa === 'defavorable' ? 'bad' : ''}">${palierTag(pa)} ${esc(txt)}</div>`;
       $('#a-out', panel).innerHTML = `${pos}
-        <div class="kpis">${kpi('Paiement hypothécaire', `${money(r.paiement)}`, '/ mois')}${kpi('Coût mensuel total', money(r.coutMensuel), 'hypothèque, taxes, chauffage')}${kpi('Comptant requis', kmoney(r.comptant))}</div>
+        <div class="kpis">${kpi('Paiement hypothécaire', `${money(r.paiement)}`, '/ mois')}${kpi('Coût mensuel total', money(r.coutMensuel), unit.t === 'C' ? 'hypothèque, taxes, chauffage, frais' : 'hypothèque, taxes, chauffage')}${kpi('Comptant requis', kmoney(r.comptant))}</div>
         ${section('Coûts d\'acquisition', `
           ${row('Mise de fonds', money(r.mise))}
           ${row(`Droits de mutation${r.droits.specifique ? ` (${muni.nom})` : ''}`, money(r.droits.total))}
@@ -274,7 +331,7 @@ const RENDER = {
           ${row('Revenu familial requis (approx.)', money(r.revenuRequis))}
           ${r.prixMax ? row('Prix maximal avec votre revenu (approx.)', money(r.prixMax), r.prixMax >= st.prix ? 'good' : 'bad') : ''}
           ${r.schl.admissible === false && st.misePct < 5 ? '<p class="flag bad">Mise de fonds minimale : 5 % (davantage au-delà de 500 000 $).</p>' : ''}`,
-        { note: 'Calcul basé sur un ratio d\'amortissement brut de la dette de 39 %, sans autres dettes. Consultez votre institution financière.' })}
+        { note: `Calcul basé sur un ratio d'amortissement brut de la dette de 39 %, sans autres dettes${unit.t === 'C' ? ', en comptant 50 % des frais de copropriété' : ''}. Consultez votre institution financière.` })}
         ${section('À vérifier avant d\'acheter', `<ul class="check">
           <li>Certificat de localisation récent et conforme</li><li>Inspection préachat par un inspecteur membre d'un ordre ou d'une association</li>
           <li>Déclarations du vendeur et historique des rénovations</li><li>Zone inondable et règlements de zonage (site de la municipalité)</li>
@@ -314,6 +371,7 @@ const RENDER = {
   },
 
   investisseur(panel, { unit, muni, est, meta, st }) {
+    const loyerMarche = loyerEstime(unit, muni);
     const ref = muni.loyer || {};
     const refs = [
       ref.estime ? `loyer de référence : <b>${money(ref.estime)}</b> (${ref.source === 'affiche' ? 'loyer affiché régional réduit de 10 %, à valider localement' : 'recensement 2021 indexé selon l\'IPC des loyers'})` : '',
@@ -329,6 +387,7 @@ const RENDER = {
         ${field('i-ass', 'Assurances / an', st.assurances, { suffix: '$', step: 50 })}
         ${field('i-ent', 'Entretien', st.entretien, { suffix: '% rev.', step: 0.5 })}
         ${field('i-ges', 'Gestion', st.gestion, { suffix: '% rev.', step: 0.5 })}
+        ${unit.t === 'C' ? field('i-frais', 'Frais de copropriété / mois', st.fraisCondo, { suffix: '$', step: 10 }) : ''}
         ${field('i-mise', 'Mise de fonds', Math.max(st.misePct, 20), { suffix: '%', step: 1 })}
         ${field('i-taux', 'Taux hypothécaire', st.taux, { suffix: '%', step: 0.05 })}
       </div>`, { note: `Repères : ${refs || 'aucun loyer de référence disponible pour ce secteur'}. Au Québec, les hausses de loyer
@@ -336,12 +395,28 @@ const RENDER = {
       <div id="i-out"></div>`;
     if (st.misePct < 20) st.misePct = 20;
     bindInputs(panel, st, { 'i-prix': 'prix', 'i-log': 'logements', 'i-loyer': 'loyer', 'i-vac': 'vacance', 'i-taxes': 'taxes',
-      'i-ass': 'assurances', 'i-ent': 'entretien', 'i-ges': 'gestion', 'i-mise': 'misePct', 'i-taux': 'taux' }, () => {
+      'i-ass': 'assurances', 'i-ent': 'entretien', 'i-ges': 'gestion', 'i-mise': 'misePct', 'i-taux': 'taux', 'i-frais': 'fraisCondo' }, () => {
       const r = analyseInvestisseur({ prix: st.prix, logements: st.logements, loyer: st.loyer, vacancePct: st.vacance,
-        taxes: st.taxes, assurances: st.assurances, entretienPct: st.entretien, gestionPct: st.gestion,
+        taxes: st.taxes, assurances: st.assurances, entretienPct: st.entretien, gestionPct: st.gestion, autresDepenses: (st.fraisCondo || 0) * 12,
         misePct: st.misePct, taux: st.taux, amort: st.amort });
       const tone = (x, a, b) => (x == null ? '' : x >= a ? 'up' : x < b ? 'down' : '');
-      $('#i-out', panel).innerHTML = `
+      const zl = zonesLoyer(loyerMarche, st);
+      const pl = palierLoyer(zl, st.loyer);
+      const zp = zonesPrix(est, st);
+      const pi = palierPrix(zp, 'investisseur', st.prix);
+      const loyerHtml = zl ? section('Zones de loyer', `
+          ${zonesBars([{ label: 'Loyer / log.', zones: { defavorable: zl.defavorable, neutre: zl.neutre, favorable: zl.favorable, risque: [zl.risque, null] },
+            cap: `${palierTag(pl, { favorable: 'Au marché', neutre: 'Un peu bas', defavorable: 'Sous le marché', risque: 'Risque d\'inoccupation' }[pl])}` }],
+          [{ v: zl.marche, label: 'Loyer du marché', cls: 'est' }, { v: st.loyer, label: 'Loyer retenu', cls: 'prix' }, { v: zl.equilibre, label: 'Loyer d\'équilibre', cls: 'eq' }],
+          { fmtv: (v) => money(v) })}
+          <p class="lead">${st.loyer >= zl.equilibre
+            ? `Au loyer retenu, l'immeuble couvre ses dépenses et l'hypothèque (loyer d'équilibre : <b>${money(zl.equilibre)}</b> par logement).`
+            : `Il faudrait <b>${money(zl.equilibre)}</b> par logement pour couvrir les dépenses et l'hypothèque (${money(zl.equilibre - st.loyer)} de plus que le loyer retenu).`}</p>`,
+        { note: 'Sous 90 % du loyer du marché : revenus faibles (au Québec, les hausses en cours de bail sont encadrées par le TAL). Au-delà de 115 % : risque d\'inoccupation.' }) : '';
+      const prixInv = zp.investisseur ? `<div class="flag ${pi === 'favorable' ? 'good' : pi === 'defavorable' ? 'bad' : ''}">${palierTag(pi)}
+          Pour un investisseur, ce prix est ${{ favorable: 'intéressant', neutre: 'acceptable', defavorable: 'élevé' }[pi]} :
+          favorable sous ${kmoney(zp.investisseur.favorable[1])} (capitalisation de 5 % ou plus), défavorable au-delà de ${kmoney(zp.investisseur.defavorable[0])} (moins de 4 %).</div>` : '';
+      $('#i-out', panel).innerHTML = `${prixInv}
         <div class="kpis">
           ${kpi('Liquidités / mois', money(r.liquiditeMensuelle), 'après hypothèque', r.liquiditeMensuelle >= 0 ? 'up' : 'down')}
           ${kpi('Taux de capitalisation', pct(r.tauxCapitalisation, 2), 'RNE / prix', tone(r.tauxCapitalisation, 5, 3.5))}
@@ -358,6 +433,7 @@ const RENDER = {
           ${row('Prix par porte', money(r.prixParPorte))}
           ${row('Rendement brut', pct(r.rendementBrut, 2))}`,
         { note: 'Les prêteurs exigent généralement un RCD d\'au moins 1,1 à 1,2 pour un immeuble locatif. Hypothèses modifiables ci-dessus.' })}
+        ${loyerHtml}
         ${muni.rendementPlex ? `<p class="lead">Rendement brut médian des plex à ${esc(muni.nom)} : <b>${pct(muni.rendementPlex)}</b>.</p>` : ''}`;
     });
   },
@@ -370,12 +446,19 @@ const RENDER = {
       ${section(`Portrait de ${muni.nom}`, `<div class="grid2">${[
         ['Population (2021)', c.pop2021, num(c.pop2021)],
         ['Croissance 2016-2021', c.croissancePop, signedPct(c.croissancePop)],
+        ['Ménages', c.menages, num(c.menages)],
         ['Revenu médian des ménages (2020)', c.revenuMenage, money(c.revenuMenage)],
+        ['Hausse du revenu 2015-2020', c.croissanceRevenu, signedPct(c.croissanceRevenu)],
         ['Propriétaires', c.pctProprio, pct(c.pctProprio, 0)],
         ['Locataires au-delà de 30 % du revenu', c.pctInabordableLocataire, pct(c.pctInabordableLocataire, 0)],
+        ['Propriétaires au-delà de 30 % du revenu', c.pctInabordableProprio, pct(c.pctInabordableProprio, 0)],
+        ['Ménages en besoin impérieux de logement', c.pctBesoinImperieux, pct(c.pctBesoinImperieux, 0)],
         ['Âge moyen', c.ageMoyen, num1(c.ageMoyen)],
+        ['Âge médian', c.ageMedian, num1(c.ageMedian)],
         ['65 ans et plus', c.pct65, pct(c.pct65, 0)],
         ['Ont déménagé en 1 an', c.pctDemenage1an, pct(c.pctDemenage1an, 0)],
+        ['Valeur médiane déclarée (2021)', c.valeurDeclaree2021, money(c.valeurDeclaree2021)],
+        ['Prix médian / revenu', muni.ratioPrixRevenu, num1(muni.ratioPrixRevenu)],
         ['Densité', c.densite, c.densite ? `${num(c.densite)} hab./km²` : '—'],
       ].filter((r) => r[1] != null).map(([l, , v]) => row(l, v)).join('')}
       </div>`, { note: 'Source : Statistique Canada, Recensement de 2021.' })}
@@ -409,10 +492,47 @@ const RENDER = {
   },
 };
 
+/** Scores par profil et zones de prix (se met à jour quand le scénario change). */
+function decisionHtml(ctxT) {
+  const { unit, muni, est, pc, comps, st, osm } = ctxT;
+  const sc = scores({ unit, muni, est, pc, comps, st, osm });
+  const zp = zonesPrix(est, st);
+  const rangees = [
+    { label: 'Acheteur', zones: zp.acheteur },
+    { label: 'Vendeur', zones: zp.vendeur, cap: `${icon('up')} &gt; ${kmoney(zp.vendeur.favorable[0])}` },
+  ];
+  if (zp.investisseur) rangees.push({ label: 'Investisseur', zones: zp.investisseur });
+  const reperes = [{ v: est.valeur, label: 'Valeur estimée', cls: 'est' }];
+  if (Math.abs(st.prix - est.valeur) > 500) reperes.push({ v: st.prix, label: 'Prix analysé', cls: 'prix' });
+  const tags = ['acheteur', 'vendeur', 'investisseur'].filter((k) => zp[k]).map((k) =>
+    `<span class="ztag"><b>${{ acheteur: 'Acheteur', vendeur: 'Vendeur', investisseur: 'Investisseur' }[k]}</b> ${palierTag(palierPrix(zp, k, st.prix))}</span>`).join('');
+  return `${section('Scores par profil', scoreCards(sc, { acheteur: 'Acheteur', vendeur: 'Vendeur', investisseur: 'Investisseur' }, FACTEURS.fr),
+    { note: `Score de 0 à 100 : favorable à partir de 65, neutre de 45 à 64, défavorable sous 45. Touchez une carte pour voir les facteurs.${osm ? '' : ' Les commodités s\'ajoutent dès qu\'elles sont chargées.'}` })}
+    ${section('Zones de prix', `${zonesBars(rangees, reperes)}<div class="ztags">Prix analysé (${kmoney(st.prix)}) : ${tags}</div>`,
+    { note: `Acheteur et vendeur : selon la fourchette estimée. Investisseur : capitalisation de 5 % ou plus (favorable) et sous 4 % (défavorable) avec un loyer de ${money(st.loyer)} par logement${unit.lg > 1 ? ` × ${st.logements}` : ''}. Modifiez le prix ou le loyer dans les onglets pour mettre à jour.` })}`;
+}
+
+/** Vue aérienne (imagerie du Québec) et, si configurée, photo de la façade. */
+async function chargerPhotos(body, unit) {
+  const box = $('#ph-aer', body);
+  const w = 720; const h = 400;
+  try {
+    const [aer, fac] = await Promise.all([vueAerienne(unit.lat, unit.lon, { w, h }).catch(() => null), photoFacade(unit.lat, unit.lon, { w, h })]);
+    if (!box.isConnected) return;
+    if (!aer && !fac) { $('#photos', body).classList.add('vide'); box.innerHTML = '<p class="note">Imagerie indisponible pour cette adresse.</p>'; return; }
+    box.innerHTML = `${fac ? `<img src="${esc(fac.url)}" alt="Façade de la propriété (Street View)" loading="lazy">` : ''}
+      ${aer ? `<img src="${aer.dataUrl}" alt="Vue aérienne de la propriété" width="${w}" height="${h}">` : ''}`;
+    box.classList.toggle('duo', Boolean(fac && aer));
+    $('#ph-cap', body).innerHTML = `${icon('camera')} ${[fac ? `Façade${fac.date ? ` (${fac.date})` : ''}` : '', aer ? 'Vue aérienne' : ''].filter(Boolean).join(' et ')} · <small>${aer ? ORTHO_CREDIT : 'Google Street View'}</small>`;
+  } catch {
+    box.innerHTML = '';
+  }
+}
+
 export function prosConsHtml(pcs) {
   if (!pcs.length) return '<p class="empty">Aucun élément marquant.</p>';
   const cls = { '+': 'pro', '−': 'con', '±': 'mix' };
-  return `<ul class="pc">${pcs.map((p) => `<li class="${cls[p.signe]}"><b>${p.signe}</b><span>${esc(p.texte)}${p.pour !== 'tous' ? ` <em>(${p.pour})</em>` : ''}</span></li>`).join('')}</ul>`;
+  return `<ul class="pc">${pcs.map((p) => `<li class="${cls[p.signe]}"><b>${p.signe}</b><span>${esc(p.texte)}${p.cle !== 'tous' ? ` <em>(${p.pour})</em>` : ''}</span></li>`).join('')}</ul>`;
 }
 
 export function newsHtml(muni) {
@@ -442,11 +562,11 @@ function printReport({ unit, muni, est, meta, st, comps, pc }, user) {
     <h1>${esc(unit.adr)}</h1><p>${esc(meta.typeLabels[unit.t])} · ${esc(muni.nom)}${muni.mrc ? ` (${esc(muni.mrc)})` : ''}</p>
     <div class="pr-hero"><div><small>Valeur marchande estimée</small><div class="big">${money(est.valeur)}</div>
       <small>Fourchette : ${money(est.bas)} à ${money(est.haut)}</small></div>
-      <div>${row('Valeur au rôle', money(unit.vr))}${row('Année', unit.an || '—')}${row('Aire habitable', unit.aire ? `${num(unit.aire)} m²` : '—')}
-      ${row('Terrain', unit.ter ? `${num(unit.ter)} m²` : '—')}${row('Logements', unit.lg || '—')}${pc != null ? row('Centile local', `${pc}e`) : ''}</div></div>
+      <div>${row('Valeur au rôle', money(unit.vr))}${row('Année', unit.an || '—')}${row('Aire habitable', aire(unit.aire))}
+      ${row('Terrain', aire(unit.ter))}${row('Logements', unit.lg || '—')}${pc != null ? row('Centile local', `${pc}e`) : ''}</div></div>
     <h2>Synthèse</h2><p>${esc(synthese({ unit, muni, est, pc, comps, st, meta }))}</p>
     <h2>Comparables</h2><table><tr><th>Adresse</th><th>Distance</th><th>Aire</th><th>Estimation</th></tr>
-      ${comps.map((c) => `<tr><td>${esc(c.adr)}</td><td>${dist(c.d)}</td><td>${c.aire ? `${num(c.aire)} m²` : '—'}</td><td>${money(c.est)}</td></tr>`).join('')}</table>
+      ${comps.map((c) => `<tr><td>${esc(c.adr)}</td><td>${dist(c.d)}</td><td>${aire(c.aire)}</td><td>${money(c.est)}</td></tr>`).join('')}</table>
     <div class="pr-cols">
       <div><h2>Acheteur</h2>${row('Prix', money(st.prix))}${row('Mise de fonds', `${st.misePct} %`)}${row('Paiement mensuel', money(a.paiement))}
         ${row('Droits de mutation', money(a.droits.total))}${row('Comptant requis', money(a.comptant))}${row('Revenu requis (approx.)', money(a.revenuRequis))}</div>

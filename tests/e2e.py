@@ -157,8 +157,25 @@ def run(pw, viewport, name, dark=False):
     page.screenshot(path=SHOTS / f"{name}-08-forfaits.png")
     page.go_back()
     page.wait_for_selector(".sheet.open .tabs", timeout=10000)
+    assert page.is_visible(".scards"), "scores absents"
+    assert page.is_visible(".zones"), "zones absentes"
+    page.locator(".scards").scroll_into_view_if_needed()
+    page.wait_for_timeout(300)
+    page.screenshot(path=SHOTS / f"{name}-06b-scores.png")
+    page.click("#pdf")
+    page.wait_for_selector("#pdf-menu:not([hidden])")
+    page.screenshot(path=SHOTS / f"{name}-06c-menu-pdf.png")
+    page.click("#pdf-menu [data-u=pi2]")
     with page.expect_download(timeout=30000) as dl:
-        page.click("#pdf")
+        page.click("#pdf-menu [data-lang=en]")
+    pdf = dl.value
+    path = SHOTS / f"{name}-rapport-en.pdf"
+    pdf.save_as(path)
+    assert path.stat().st_size > 20000, path.stat().st_size
+    page.click("#pdf")
+    page.click("#pdf-menu [data-u=m2]")
+    with page.expect_download(timeout=30000) as dl:
+        page.click("#pdf-menu [data-lang=fr]")
     pdf = dl.value
     path = SHOTS / f"{name}-rapport.pdf"
     pdf.save_as(path)

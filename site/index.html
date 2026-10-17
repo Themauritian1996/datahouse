@@ -40,6 +40,10 @@
       <a href="https://github.com/Themauritian1996/datahouse/releases/download/apk/DataHouse.apk" id="menu-apk">Application Android (APK)</a>
       <a href="#/methodo">Méthodologie et sources</a>
       <a href="#/legal">Conditions et confidentialité</a>
+      <div class="menu-prefs">
+        <span>Superficies</span><span class="seg" id="seg-u"><button data-u="m2">m²</button><button data-u="pi2">pi²</button></span>
+        <span>Rapports</span><span class="seg" id="seg-l"><button data-l="fr">FR</button><button data-l="en">EN</button></span>
+      </div>
     </nav>
   </header>
 
@@ -52,6 +56,7 @@
       <button class="chip" data-m="g">Tendance</button>
       <button class="chip" data-m="y">Rendement</button>
       <button class="chip" data-m="l">Revente</button>
+      <button class="chip" id="sat" aria-pressed="false">Satellite</button>
       <button class="chip icon-chip" id="legend-toggle" aria-label="Légende"><svg class="ic" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/></svg></button>
     </div>
     <div id="legend" class="legend"></div>

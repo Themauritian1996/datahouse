@@ -72,22 +72,246 @@ export function distance(a, b) {
   return 2 * R * Math.asin(Math.sqrt(s));
 }
 
-/** Propriétés comparables : même type, logements semblables, les plus proches. */
+const memeImmeuble = (a, b) => Math.abs(a.lat - b.lat) < 0.00002 && Math.abs(a.lon - b.lon) < 0.00002;
+
+/**
+ * Propriétés comparables : même type, taille semblable, les plus proches et les plus semblables.
+ * - Condo : condos d'AUTRES immeubles du voisinage (ceux du même immeuble sont fournis à part par `immeuble`).
+ * - Plex : même nombre de logements (un triplex se compare à des triplex), à défaut ±1.
+ * - Maison : superficie habitable semblable.
+ */
 export function comparables(unit, units, munis, meta, { max = 8, rayon = 1500 } = {}) {
-  const out = [];
+  const candidats = [];
   for (const u of units) {
     if (u.id === unit.id || u.t !== unit.t) continue;
-    if (unit.t === 'P' && Math.abs((u.lg || 0) - (unit.lg || 0)) > 1) continue;
-    if (unit.t === 'C' && u.lat === unit.lat && u.lon === unit.lon && u.aire === unit.aire) continue;
+    if (unit.t === 'C' && memeImmeuble(u, unit)) continue;
     const d = distance(unit, u);
     if (d > rayon) continue;
+    const ecartLg = Math.abs((u.lg || 0) - (unit.lg || 0));
+    if (unit.t === 'P' && ecartLg > 1) continue;
     const m = munis[u.muni];
     if (!m) continue;
+    const ratioAire = unit.aire && u.aire ? Math.max(unit.aire, u.aire) / Math.min(unit.aire, u.aire) : 1.3;
+    if (ratioAire > 1.8) continue;
+    const ecartAn = unit.an && u.an ? Math.abs(unit.an - u.an) : 15;
+    // Pénalité de dissemblance exprimée en « mètres équivalents ».
+    const score = d + (ratioAire - 1) * 900 + Math.min(ecartAn, 60) * 8 + (unit.t === 'P' ? ecartLg * 700 : 0);
     const est = estimate(u, m, meta);
-    out.push({ ...u, d, est: est.valeur, m2: u.aire ? est.valeur / u.aire : null });
+    candidats.push({ ...u, d, score, est: est.valeur, m2: u.aire ? est.valeur / u.aire : null, memeLg: ecartLg === 0 });
   }
-  out.sort((a, b) => a.d - b.d);
-  return out.slice(0, max);
+  candidats.sort((a, b) => a.score - b.score);
+  // Un seul condo par immeuble voisin, pour élargir l'échantillon.
+  const vus = new Set();
+  const out = [];
+  for (const c of candidats) {
+    if (unit.t === 'C') {
+      const k = `${c.lat.toFixed(5)},${c.lon.toFixed(5)}`;
+      if (vus.has(k)) continue;
+      vus.add(k);
+    }
+    out.push(c);
+    if (out.length >= max) break;
+  }
+  return out.sort((a, b) => a.d - b.d);
+}
+
+/** Portrait de l'immeuble d'un condo : nombre d'unités, valeurs et rang de l'unité. */
+export function immeuble(unit, units, muni, meta) {
+  const memes = units.filter((u) => memeImmeuble(u, unit) && u.t === unit.t);
+  if (!memes.length) return null;
+  const vals = memes.map((u) => estimate(u, muni, meta).valeur).sort((a, b) => a - b);
+  const aires = memes.map((u) => u.aire).filter(Boolean);
+  const mine = estimate(unit, muni, meta).valeur;
+  const rang = vals.filter((v) => v < mine).length;
+  return {
+    unites: memes.length,
+    medianeValeur: median(vals),
+    min: vals[0],
+    max: vals[vals.length - 1],
+    medianeAire: median(aires),
+    centile: memes.length > 1 ? Math.round((100 * rang) / (memes.length - 1)) : null,
+    etages: Math.max(...memes.map((u) => u.et || 0)) || null,
+    annee: unit.an || memes.find((u) => u.an)?.an || null,
+  };
+}
+
+/**
+ * Frais de copropriété mensuels estimés (aucune source publique ne les publie).
+ * Repère usuel au Québec : environ 0,25 $ à 0,40 $ par pi² habitable par mois, selon l'âge
+ * et la taille de l'immeuble (ascenseurs, aires communes, fonds de prévoyance).
+ */
+export function fraisCondo(unit, nbUnites) {
+  if (unit.t !== 'C' || !unit.aire) return null;
+  const pi2 = unit.aire * 10.7639;
+  let taux = 0.31;
+  const facteurs = [];
+  if (unit.an) {
+    if (unit.an < 1975) { taux += 0.06; facteurs.push('age-ancien'); }
+    else if (unit.an < 2000) { taux += 0.03; facteurs.push('age-moyen'); }
+    else if (unit.an >= 2015) { taux -= 0.04; facteurs.push('age-recent'); }
+  }
+  if (nbUnites) {
+    if (nbUnites <= 6) { taux -= 0.06; facteurs.push('petit'); }
+    else if (nbUnites >= 80) { taux += 0.05; facteurs.push('grand'); }
+  }
+  const mensuel = round(pi2 * taux, 5);
+  return { mensuel, bas: round(mensuel * 0.75, 5), haut: round(mensuel * 1.3, 5), parPi2: taux, facteurs };
+}
+
+/** Écart (en %) entre la valeur au m² de la propriété et la médiane de ses comparables. */
+export function ecartComparables(unit, est, comps) {
+  const m2 = unit.aire ? est.valeur / unit.aire : null;
+  const med = median((comps || []).map((c) => c.m2));
+  return m2 && med ? ((m2 - med) / med) * 100 : null;
+}
+
+/* ---------------------------------------------------------------------------
+ * Zones de prix et de loyer, et scores par profil.
+ * Paliers : « favorable » (pouce en haut), « neutre », « defavorable » (pouce en bas).
+ * ------------------------------------------------------------------------- */
+export const PALIERS = { favorable: 65, neutre: 45 };
+export const palier = (score) => (score == null ? null : score >= PALIERS.favorable ? 'favorable' : score >= PALIERS.neutre ? 'neutre' : 'defavorable');
+
+/** Revenu net d'exploitation annuel d'un immeuble selon un scénario (indépendant du prix). */
+function rneScenario(st) {
+  const brut = (st.logements * st.loyer) * 12;
+  const eff = brut * (1 - (st.vacance ?? 3) / 100);
+  return eff - (st.taxes || 0) - (st.assurances || 0) - (st.fraisCondo || 0) * 12 - eff * ((st.entretien ?? 5) / 100) - eff * ((st.gestion ?? 0) / 100);
+}
+
+/**
+ * Seuils de prix pour chaque profil.
+ * Acheteur et vendeur : selon la fourchette estimée. Investisseur : selon le taux de capitalisation
+ * obtenu avec le loyer retenu (5 % ou mieux = favorable, moins de 4 % = défavorable).
+ */
+export function zonesPrix(est, st, { capFavorable = 5, capDefavorable = 4 } = {}) {
+  const bas = round((est.bas + est.valeur) / 2, 1000);
+  const haut = round((est.valeur + est.haut) / 2, 1000);
+  const zones = {
+    acheteur: { favorable: [null, bas], neutre: [bas, haut], defavorable: [haut, null] },
+    vendeur: { defavorable: [null, bas], neutre: [bas, haut], favorable: [haut, null] },
+  };
+  if (st && st.loyer > 0) {
+    const rne = rneScenario(st);
+    if (rne > 0) {
+      const pFav = round(rne / (capFavorable / 100), 1000);
+      const pDef = round(rne / (capDefavorable / 100), 1000);
+      zones.investisseur = { favorable: [null, pFav], neutre: [pFav, pDef], defavorable: [pDef, null], rne: Math.round(rne) };
+    }
+  }
+  return zones;
+}
+
+/** Palier d'un prix donné pour un profil. */
+export function palierPrix(zones, profil, prix) {
+  const z = zones[profil];
+  if (!z) return null;
+  for (const k of ['favorable', 'neutre', 'defavorable']) {
+    const [lo, hi] = z[k];
+    if ((lo == null || prix >= lo) && (hi == null || prix < hi)) return k;
+  }
+  return null;
+}
+
+/** Loyer qui équilibre les liquidités (après hypothèque) et zones de loyer pour l'investisseur. */
+export function zonesLoyer(loyerMarche, st) {
+  if (!loyerMarche) return null;
+  const n = Math.max(1, st.logements || 1);
+  const pret = st.prix * (1 - Math.max(20, st.misePct || 20) / 100);
+  const service = paiementMensuel(pret, st.taux, st.amort || 25) * 12;
+  const vac = 1 - (st.vacance ?? 3) / 100;
+  const varPct = ((st.entretien ?? 5) + (st.gestion ?? 0)) / 100;
+  const fixes = (st.taxes || 0) + (st.assurances || 0) + (st.fraisCondo || 0) * 12 + service;
+  // eff × (1 − var) = fixes  →  loyer = fixes / ((1 − var) × vac × 12 × n)
+  const equilibre = round(fixes / ((1 - varPct) * vac * 12 * n), 5);
+  return {
+    marche: loyerMarche,
+    equilibre,
+    defavorable: [null, round(loyerMarche * 0.9, 5)],
+    neutre: [round(loyerMarche * 0.9, 5), loyerMarche],
+    favorable: [loyerMarche, round(loyerMarche * 1.15, 5)],
+    risque: round(loyerMarche * 1.15, 5),
+  };
+}
+
+export function palierLoyer(z, loyer) {
+  if (!z || !loyer) return null;
+  if (loyer >= z.risque) return 'risque';
+  if (loyer >= z.marche) return 'favorable';
+  if (loyer >= z.defavorable[1]) return 'neutre';
+  return 'defavorable';
+}
+
+const lin = (x, x0, x1) => (x == null ? null : clamp(((x - x0) / (x1 - x0)) * 100, 0, 100));
+function moyenne(facteurs) {
+  const ok = facteurs.filter((f) => f.score != null);
+  if (ok.length < 2) return null;
+  const poids = ok.reduce((a, f) => a + f.poids, 0);
+  return Math.round(ok.reduce((a, f) => a + f.score * f.poids, 0) / poids);
+}
+
+/**
+ * Scores de 0 à 100 pour l'acheteur, le vendeur et l'investisseur, avec le détail des facteurs.
+ * `osm` (commodités) est facultatif.
+ */
+export function scores({ unit, muni, est, pc, comps, st, osm }) {
+  const c = muni.recensement || {};
+  const g = muni.marche?.g != null ? muni.marche.g * 100 : null;
+  const ecart = ecartComparables(unit, est, comps);
+  const rv = indiceRevente(unit, muni, pc);
+  const ratio = muni.ratioPrixRevenu;
+  let commodites = null;
+  if (osm) {
+    const pts = [
+      osm.rail?.plusProche != null && osm.rail.plusProche <= 1000,
+      osm.bus?.plusProche != null && osm.bus.plusProche <= 400,
+      osm.epicerie?.plusProche != null && osm.epicerie.plusProche <= 800,
+      osm.ecole?.plusProche != null && osm.ecole.plusProche <= 800,
+      osm.parc?.plusProche != null && osm.parc.plusProche <= 400,
+      osm.sante?.plusProche != null && osm.sante.plusProche <= 1000,
+    ].filter(Boolean).length;
+    const nuis = ['autoroute', 'voieFerree', 'industriel'].filter((k) => osm[k]?.n).length;
+    commodites = clamp(Math.round((pts / 6) * 100 - nuis * 15), 0, 100);
+  }
+  const prixVsMarche = st?.prix && est.valeur ? (st.prix / est.valeur - 1) * 100 : 0;
+
+  const acheteur = [
+    { k: 'prixDemande', poids: 3, score: lin(-prixVsMarche, -15, 10), valeur: prixVsMarche },
+    { k: 'valeurVoisins', poids: 2, score: ecart == null ? null : lin(-ecart, -25, 20), valeur: ecart },
+    { k: 'abordabilite', poids: 1.5, score: ratio == null ? null : lin(-ratio, -12, -4), valeur: ratio },
+    { k: 'revente', poids: 1.5, score: rv?.score ?? null, valeur: rv?.score },
+    { k: 'etat', poids: 1, score: unit.an ? lin(unit.an, 1940, 2015) : null, valeur: unit.an },
+    { k: 'commodites', poids: 1.5, score: commodites, valeur: commodites },
+    { k: 'precision', poids: 0.5, score: lin(-est.marge, -0.25, -0.08), valeur: est.marge * 100 },
+  ];
+  const vendeur = [
+    { k: 'tendance', poids: 2.5, score: g == null ? null : lin(g, -2, 8), valeur: g },
+    { k: 'liquidite', poids: 2, score: muni.liquidite?.score ?? null, valeur: muni.liquidite?.score },
+    { k: 'positionMarche', poids: 1.5, score: pc == null ? null : clamp(100 - Math.abs(pc - 50) * 1.6, 0, 100), valeur: pc },
+    { k: 'valeurVoisins', poids: 1.5, score: ecart == null ? null : lin(ecart, -20, 25), valeur: ecart },
+    { k: 'demande', poids: 1, score: c.croissancePop == null ? null : lin(c.croissancePop, -2, 10), valeur: c.croissancePop },
+    { k: 'commodites', poids: 1, score: commodites, valeur: commodites },
+  ];
+  let investisseur = null;
+  if (st && st.loyer > 0) {
+    const i = analyseInvestisseur({ prix: st.prix, logements: st.logements, loyer: st.loyer, vacancePct: st.vacance,
+      taxes: st.taxes, assurances: st.assurances, entretienPct: st.entretien, gestionPct: st.gestion,
+      autresDepenses: (st.fraisCondo || 0) * 12, misePct: Math.max(20, st.misePct || 20), taux: st.taux, amort: st.amort || 25 });
+    investisseur = [
+      { k: 'capitalisation', poids: 3, score: lin(i.tauxCapitalisation, 3, 6.5), valeur: i.tauxCapitalisation },
+      { k: 'liquidites', poids: 2, score: lin(i.liquiditeMensuelle / Math.max(1, st.logements), -400, 250), valeur: i.liquiditeMensuelle },
+      { k: 'couverture', poids: 1.5, score: i.rcd == null ? null : lin(i.rcd, 0.8, 1.4), valeur: i.rcd },
+      { k: 'bassinLocatif', poids: 1, score: c.pctProprio == null ? null : lin(100 - c.pctProprio, 20, 65), valeur: c.pctProprio == null ? null : 100 - c.pctProprio },
+      { k: 'capaciteLocataires', poids: 1, score: c.pctInabordableLocataire == null ? null : lin(-c.pctInabordableLocataire, -40, -15), valeur: c.pctInabordableLocataire },
+      { k: 'plusValue', poids: 1, score: g == null ? null : lin(g, -1, 7), valeur: g },
+    ];
+  }
+  const pack = (f) => {
+    if (!f) return null;
+    const score = moyenne(f);
+    return { score, palier: palier(score), facteurs: f.filter((x) => x.score != null).map((x) => ({ ...x, score: Math.round(x.score) })) };
+  };
+  return { acheteur: pack(acheteur), vendeur: pack(vendeur), investisseur: pack(investisseur) };
 }
 
 export function median(arr) {
@@ -145,7 +369,7 @@ export function paiementMensuel(pret, tauxAnnuelPct, ansAmortissement) {
 export function analyseAcheteur(p) {
   const {
     prix, misePct, taux, amort, code, meta, taxesAnnuelles, chauffageMensuel = 100, fraisNotaire = 2000,
-    inspection = 600, revenu,
+    inspection = 600, revenu, fraisCondo = 0,
   } = p;
   const mise = prix * (misePct / 100);
   const schl = primeSCHL(prix, misePct);
@@ -155,12 +379,13 @@ export function analyseAcheteur(p) {
   // Taux de qualification (« test de résistance ») : le plus élevé de taux + 2 % ou 5,25 %.
   const tauxQualif = Math.max(taux + 2, 5.25);
   const paiementQualif = paiementMensuel(pret, tauxQualif, amort);
-  const logement = paiementQualif + taxesAnnuelles / 12 + chauffageMensuel;
+  // Les prêteurs comptent habituellement 50 % des frais de copropriété dans le ratio d'amortissement.
+  const logement = paiementQualif + taxesAnnuelles / 12 + chauffageMensuel + fraisCondo * 0.5;
   const revenuRequis = Math.round((logement * 12) / 0.39 / 1000) * 1000;
   // Prix maximal pour un revenu donné (ABD 39 %).
   let prixMax = null;
   if (revenu) {
-    const budget = (revenu * 0.39) / 12 - chauffageMensuel - taxesAnnuelles / 12;
+    const budget = (revenu * 0.39) / 12 - chauffageMensuel - taxesAnnuelles / 12 - fraisCondo * 0.5;
     const i = (1 + tauxQualif / 100 / 2) ** (2 / 12) - 1;
     const n = amort * 12;
     const pretMax = budget > 0 ? (budget * (1 - (1 + i) ** -n)) / i : 0;
@@ -170,7 +395,7 @@ export function analyseAcheteur(p) {
     mise: Math.round(mise), schl, pret: Math.round(pret), paiement: Math.round(paiement),
     droits: dm, fraisNotaire, inspection,
     comptant: Math.round(mise + dm.total + fraisNotaire + inspection),
-    coutMensuel: Math.round(paiement + taxesAnnuelles / 12 + chauffageMensuel),
+    coutMensuel: Math.round(paiement + taxesAnnuelles / 12 + chauffageMensuel + fraisCondo),
     tauxQualif, revenuRequis, prixMax,
   };
 }

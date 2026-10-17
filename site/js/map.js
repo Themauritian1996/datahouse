@@ -1,6 +1,7 @@
 // Carte interactive (MapLibre GL) : choroplèthe des municipalités et unités d'évaluation.
 import { loadBoundaries, unitsInBox, munisLoaded } from './data.js';
 import { kmoney } from './format.js';
+import { ORTHO_TUILES, ORTHO_CREDIT } from './photo.js';
 
 /* global maplibregl */
 const STYLES = {
@@ -86,6 +87,8 @@ export class Carte {
     const style = map.getStyle();
     if (!style?.layers) return; // un changement de style est en cours : style.load sera relancé
     const firstSymbol = style.layers.find((l) => l.type === 'symbol')?.id;
+    map.addSource('ortho', { type: 'raster', tiles: [ORTHO_TUILES], tileSize: 256, maxzoom: 19, attribution: ORTHO_CREDIT });
+    map.addLayer({ id: 'ortho', type: 'raster', source: 'ortho', layout: { visibility: this.satellite ? 'visible' : 'none' } }, firstSymbol);
     map.addSource('munis', { type: 'geojson', data: geo, promoteId: 'code' });
     map.addLayer({ id: 'munis-fill', type: 'fill', source: 'munis', maxzoom: UNIT_ZOOM + 0.5,
       paint: { 'fill-opacity': ['interpolate', ['linear'], ['zoom'], 9, 0.72, UNIT_ZOOM, 0.12] } }, firstSymbol);
@@ -103,6 +106,7 @@ export class Carte {
         'circle-stroke-color': ['case', ['boolean', ['get', 'sel'], false], dark() ? '#ffffff' : '#0b0b0b', dark() ? '#0b0b0b' : '#ffffff'],
       } });
     this.setMetric(this.metric);
+    if (this.satellite) this.setSatellite(true);
     let hovered = null;
     map.on('mousemove', 'munis-fill', (e) => {
       if (hovered !== null) map.setFeatureState({ source: 'munis', id: hovered }, { hover: false });
@@ -117,6 +121,14 @@ export class Carte {
     map.on('mouseleave', 'units', () => { map.getCanvas().style.cursor = ''; });
     this.handlers.onReady?.();
     this.refreshUnits();
+  }
+
+  /** Affiche ou masque la vue satellite (orthophotos du Québec). */
+  setSatellite(on) {
+    this.satellite = on;
+    if (this.map.getLayer('ortho')) this.map.setLayoutProperty('ortho', 'visibility', on ? 'visible' : 'none');
+    if (this.map.getLayer('munis-fill')) this.map.setPaintProperty('munis-fill', 'fill-opacity', on
+      ? ['interpolate', ['linear'], ['zoom'], 9, 0.45, UNIT_ZOOM, 0] : ['interpolate', ['linear'], ['zoom'], 9, 0.72, UNIT_ZOOM, 0.12]);
   }
 
   setMetric(metric) {

@@ -1,10 +1,11 @@
 // Pages pleine largeur : compte, favoris, forfaits, méthodologie, mentions légales.
 import { CONFIG } from './config.js';
 import * as auth from './auth.js';
-import { money, kmoney, esc, date, num, pct, signedPct } from './format.js';
+import { money, kmoney, esc, date, num, pct, signedPct, aire, parAire, uniteLabel } from './format.js';
 import { unitsAround, getUnit, loadMuni } from './data.js';
 import { estimate, percentile, loyerEstime, indiceRevente } from './engine.js';
 import { $, $$, toast, section, row, icon } from './ui.js';
+import { getPrefs, setPrefs } from './prefs.js';
 
 const PROFILS = { acheteur: 'Acheteur', vendeur: 'Vendeur', investisseur: 'Investisseur', courtier: 'Courtier immobilier' };
 const profilSelect = (cur) => `<select id="profil">${Object.entries(PROFILS).map(([k, v]) => `<option value="${k}" ${k === cur ? 'selected' : ''}>${v}</option>`).join('')}</select>`;
@@ -28,11 +29,21 @@ export function pageCompte(ctx, params) {
         <label class="field"><span>Courriel professionnel</span><input id="c-courriel" value="${esc(user.courtier?.courriel || '')}"></label>
       </div>
       <button class="btn primary" id="save">Enregistrer</button>`)}
+    ${section('Préférences', `
+      <label class="field"><span>Superficies</span><select id="pref-u">
+        <option value="m2" ${getPrefs().unites === 'm2' ? 'selected' : ''}>Mètres carrés (m²)</option>
+        <option value="pi2" ${getPrefs().unites === 'pi2' ? 'selected' : ''}>Pieds carrés (pi²)</option></select></label>
+      <label class="field"><span>Langue des rapports PDF</span><select id="pref-l">
+        <option value="fr" ${getPrefs().langueRapport === 'fr' ? 'selected' : ''}>Français</option>
+        <option value="en" ${getPrefs().langueRapport === 'en' ? 'selected' : ''}>English</option></select></label>`,
+    { note: 'Enregistrées automatiquement, sur cet appareil et dans votre compte.' })}
     ${section('Forfait', `${row('Forfait actuel', esc(plan.nom))}
       ${row('Analyses détaillées / mois', Number.isFinite(plan.analyses) ? plan.analyses : 'Illimitées')}
       <a class="btn" href="#/tarifs">Changer de forfait</a>`)}
     <button class="btn ghost" id="logout">Se déconnecter</button>`);
   $('#profil').addEventListener('change', (e) => { $('#courtier-box').hidden = e.target.value !== 'courtier'; });
+  $('#pref-u').addEventListener('change', (e) => { setPrefs({ unites: e.target.value }); toast('Préférence enregistrée.'); });
+  $('#pref-l').addEventListener('change', (e) => { setPrefs({ langueRapport: e.target.value }); toast('Préférence enregistrée.'); });
   $('#save').addEventListener('click', async () => {
     await auth.updateProfile({ nom: $('#nom').value.trim(), profil: $('#profil').value,
       courtier: { nom: $('#c-nom').value.trim(), agence: $('#c-agence').value.trim(), tel: $('#c-tel').value.trim(),
@@ -56,7 +67,9 @@ function pageConnexion(ctx, inscription) {
           <label class="check-line"><input type="checkbox" id="ok" required> J'accepte les <a href="#/legal" target="_blank">conditions et la politique de confidentialité</a>.</label>` : ''}
         <button class="btn primary wide" type="submit">${inscription ? 'Créer mon compte' : 'Se connecter'}</button>
       </form>
-      ${auth.canGoogle() ? '<button class="btn wide" id="google">Continuer avec Google</button>' : ''}
+      ${auth.canGoogle() ? `<div class="or"><span>ou</span></div>
+        <button class="btn wide google" id="google"><svg class="ic g" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M21.6 12.2c0-.7-.1-1.4-.2-2H12v3.8h5.4a4.6 4.6 0 0 1-2 3v2.5h3.2c1.9-1.7 3-4.3 3-7.3z"/><path fill="#34A853" d="M12 22c2.7 0 5-.9 6.6-2.4l-3.2-2.5c-.9.6-2 1-3.4 1-2.6 0-4.8-1.8-5.6-4.1H3.1v2.6A10 10 0 0 0 12 22z"/><path fill="#FBBC05" d="M6.4 14c-.2-.6-.3-1.3-.3-2s.1-1.4.3-2V7.4H3.1a10 10 0 0 0 0 9.2z"/><path fill="#EA4335" d="M12 5.9c1.5 0 2.8.5 3.8 1.5l2.9-2.9A10 10 0 0 0 3.1 7.4L6.4 10c.8-2.3 3-4.1 5.6-4.1z"/></svg>
+        <span>${inscription ? 'Créer un compte avec Google' : 'Continuer avec Google'}</span></button>` : ''}
       <p class="center">${inscription ? '<a href="#/compte">J\'ai déjà un compte</a>' : '<a href="#/compte?inscription">Créer un compte</a> · <a href="#" id="reset">Mot de passe oublié</a>'}</p>
     </div>`);
   $('#auth-form').addEventListener('submit', async (e) => {
@@ -73,7 +86,16 @@ function pageConnexion(ctx, inscription) {
     } finally { btn.disabled = false; }
   });
   $('#google')?.addEventListener('click', async () => {
-    try { await auth.signInGoogle($('#profil')?.value || 'acheteur'); ctx.back(); } catch (err) { toast(frError(err), 'warn'); }
+    if (inscription && !$('#ok').checked) { toast('Acceptez d\'abord les conditions et la politique de confidentialité.', 'warn'); return; }
+    const btn = $('#google');
+    btn.disabled = true;
+    try {
+      await auth.signInGoogle($('#profil')?.value || 'acheteur');
+      toast('Bienvenue !');
+      ctx.back();
+    } catch (err) {
+      if (err.code !== 'auth/popup-closed-by-user' && err.code !== 'annule') toast(frError(err), 'warn');
+    } finally { btn.disabled = false; }
   });
   $('#reset')?.addEventListener('click', async (e) => {
     e.preventDefault();
@@ -87,6 +109,9 @@ function frError(err) {
   if (code.includes('invalid-credential') || code.includes('wrong-password') || code.includes('user-not-found')) return 'Courriel ou mot de passe invalide.';
   if (code.includes('weak-password')) return 'Mot de passe trop faible (8 caractères minimum).';
   if (code.includes('invalid-email')) return 'Courriel invalide.';
+  if (code.includes('popup-blocked')) return 'La fenêtre Google a été bloquée par le navigateur. Autorisez les fenêtres surgissantes pour ce site.';
+  if (code.includes('account-exists-with-different-credential')) return 'Ce courriel est déjà associé à un compte avec mot de passe. Connectez-vous avec votre mot de passe.';
+  if (code.includes('delai')) return 'La connexion Google a expiré. Réessayez.';
   return err.message || 'Une erreur est survenue.';
 }
 
@@ -148,9 +173,9 @@ async function compareHtml(meta, favs) {
     ${line('Fourchette', rows.map((r) => `${kmoney(r.e.bas)} – ${kmoney(r.e.haut)}`), (x) => x)}
     ${line('Type', rows.map((r) => meta.typeLabels[r.u.t]), (x) => x)}
     ${line('Année', rows.map((r) => r.u.an), (x) => x, true)}
-    ${line('Aire habitable (m²)', rows.map((r) => r.u.aire), num, true)}
-    ${line('Prix au m²', m2, (x) => `${num(x)} $`, false)}
-    ${line('Terrain (m²)', rows.map((r) => r.u.ter), num, true)}
+    ${line('Aire habitable', rows.map((r) => r.u.aire), (x) => aire(x), true)}
+    ${line(`Prix au ${uniteLabel()}`, m2, (x) => parAire(x), false)}
+    ${line('Terrain', rows.map((r) => r.u.ter), (x) => aire(x), true)}
     ${line('Logements', rows.map((r) => r.u.lg), (x) => x)}
     ${line('Centile local', rows.map((r) => r.pc), (x) => `${x}e`)}
     ${line('Tendance municipale / an', rows.map((r) => r.m.marche.g * 100), (x) => signedPct(x), true)}
