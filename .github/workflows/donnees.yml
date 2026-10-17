@@ -75,6 +75,8 @@ jobs:
         run: |
           gh release view donnees >/dev/null 2>&1 || gh release create donnees --title "Données" --notes "Données générées automatiquement par le flux « Données »."
           gh release upload donnees donnees.tar.gz --clobber
+          grep -v -i "key=\|token" "$RUNNER_TEMP/construction.log" | grep -E "INFO|WARNING|ERROR|Traceback|Error" | tail -n 400 > journal.txt || true
+          gh release upload donnees journal.txt --clobber || true
       - name: Redéploiement du site
         env:
           GH_TOKEN: ${{ github.token }}

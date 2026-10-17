@@ -47,8 +47,10 @@ def parse(path: Path, annee: int) -> dict[str, dict]:
             v = _f(row.get(unique)) or _f(row.get(residuel))
             taux += v
         # Garde-fou : un taux résidentiel plausible se situe entre 0,1 $ et 3 $ par 100 $.
+        rec = {"region": (row.get("desc_reg") or "").strip() or None, "mrc": (row.get("nom_mrc") or "").strip() or None}
         if 0.1 <= taux <= 3:
-            out[code] = {"tauxResidentiel": round(taux, 4), "annee": annee}
+            rec.update({"tauxResidentiel": round(taux, 4), "annee": annee})
+        out[code] = rec
     return out
 
 
@@ -60,7 +62,7 @@ def load_taxes(source: Path | None = None, annee: int | None = None) -> dict[str
         try:
             path = download(URL.format(an=a), WORK / f"taxes_{a}.csv", timeout=300, retries=1)
             data = parse(path, a)
-            if len(data) > 100:
+            if sum(1 for d in data.values() if d.get("tauxResidentiel")) > 100:
                 log.info("taux de taxe foncière %d : %d municipalités", a, len(data))
                 return data
         except Exception as exc:  # noqa: BLE001

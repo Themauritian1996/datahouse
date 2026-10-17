@@ -154,7 +154,11 @@ def _composition(df: pd.DataFrame) -> dict[str, dict]:
 
 def parse_income(source: Path) -> dict[str, dict]:
     df = _csd_rows(source)
-    compo = _composition(df)
+    try:
+        compo = _composition(df)
+    except Exception as exc:  # noqa: BLE001 — la composition des ménages est un complément
+        log.warning("composition des ménages illisible : %r", exc)
+        compo = {}
     df = _pick(df, **{"Household size": "Total - Households by household size",
                       "Household type": "Total - Household type"})
     c21 = _col(df, "Median household total income (2020)")

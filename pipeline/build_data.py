@@ -218,6 +218,8 @@ def main() -> None:
         f = factors[code]
         st = stats.get(code, {})
         nom = r.get("nom") or names.get(code) or code
+        region = r.get("region") or (taxes.get(code) or {}).get("region")
+        mrc = r.get("mrc") or (taxes.get(code) or {}).get("mrc")
         sub = units[units["muni"] == code]
         centre = centres.get(code) or [round(sub["lon"].median(), 5), round(sub["lat"].median(), 5)]
         pop = r.get("population") or c.get("pop2021")
@@ -240,7 +242,7 @@ def main() -> None:
         if plex and plex["n"] >= 10 and loyer_est and plex.get("medLogements"):
             rendement = round(12 * loyer_est * plex["medLogements"] / plex["medEst"] * 100, 2)
         data = {
-            "code": code, "nom": nom, "mrc": r.get("mrc"), "region": r.get("region"), "cm": r.get("cm"),
+            "code": code, "nom": nom, "mrc": mrc, "region": region, "cm": r.get("cm"),
             "population": none_if_nan(pop), "centre": centre,
             "role": {"annee": f["roleAnnee"], "dateRef": f["dateRef"], "nbUnites": int(len(sub))},
             "marche": f,
@@ -249,17 +251,17 @@ def main() -> None:
             "loyer": {"median2021": loyer2021, "facteurIPC": cpi_f, "estime": loyer_est, "source": loyer_src,
                       "affiche2ch": affiche, "region": key, "periodeAffiche": asking.get("periode"),
                       "schl2ch": schl2, "anneeSCHL": schl.get("anneeLoyer"), "centreSCHL": ks},
-            "economie": {**(epa_k.get(cle(r.get("region"))) or {}),
+            "economie": {**(epa_k.get(cle(region)) or {}),
                          "inoccupation": schl.get("inoccupation", {}).get(ks) if ks else None,
                          "anneeInoccupation": schl.get("anneeInoccupation"), "centreSCHL": ks},
             "rendementPlex": rendement,
             "liquidite": liq,
             "ratioPrixRevenu": round(ratio_pr, 2) if ratio_pr else None,
-            "taxes": taxes.get(code),
+            "taxes": taxes.get(code) if (taxes.get(code) or {}).get("tauxResidentiel") else None,
             "nouvelles": None,
         }
         write_json(out / "muni" / f"{code}.json", data)
-        index.append({"c": code, "n": nom, "m": r.get("mrc"), "r": r.get("region"), "p": none_if_nan(pop),
+        index.append({"c": code, "n": nom, "m": mrc, "r": region, "p": none_if_nan(pop),
                       "x": centre[0], "y": centre[1], "v": u.get("medEst"), "g": f["g"],
                       "l": liq["score"], "y2": rendement})
         props[code] = {"v": u.get("medEst"), "g": round(f["g"] * 100, 1), "y": rendement,
