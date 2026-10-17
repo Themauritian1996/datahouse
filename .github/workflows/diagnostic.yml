@@ -36,29 +36,17 @@ jobs:
                   except Exception as e: p('    lecture', e)
           os.makedirs('d', exist_ok=True)
           try:
-              z = get('https://www.donneesquebec.ca/recherche/dataset/2d3b5cf8-b347-49c7-ad3b-bd6a9c15e443/resource/2ae11c05-03b2-4006-bdb2-a49a4fa41c23/download/etablissements-meq-mes-esrishp.zip', 'd/ecoles.zip')
-              zipfile.ZipFile(z).extractall('d/ecoles'); p('ÉCOLES fichiers', [os.path.basename(x) for x in glob.glob('d/ecoles/**/*', recursive=True)][:30])
-              for shp in glob.glob('d/ecoles/**/*.shp', recursive=True): p('SHP', shp); explorer(shp)
-          except Exception as e: p('ÉCOLES erreur', e)
-          for u in ['https://www.donneesquebec.ca/recherche/dataset/004de02c-19f1-4da0-9af8-33f893e41972/resource/6c5d4a5d-ba3b-40a6-b570-916f43ab622c/download/defav_ecole_prim_publique_2025_2026.csv']:
-              try:
-                  r = requests.get('https://www.donneesquebec.ca/recherche/api/3/action/package_show', params={'id': 'indices-de-defavorisation'}, headers=H, timeout=60)
-                  for res in r.json()['result']['resources']:
-                      if res.get('format') == 'CSV':
-                          p('IMSE RES', res['name'], res['url'])
-                          t = requests.get(res['url'], headers=H, timeout=120).content
-                          for enc in ('utf-8-sig', 'cp1252'):
-                              try: txt = t.decode(enc); break
-                              except Exception: pass
-                          p('   ', txt.splitlines()[:3])
-              except Exception as e: p('IMSE erreur', e)
-          try:
-              z = get('https://stqc380donopppdtce01.blob.core.windows.net/donnees-ouvertes/Repertoire_terrains_contamines/RepertoireTerrainsContamines.gdb.zip', 'd/gtc.zip')
-              zipfile.ZipFile(z).extractall('d/gtc'); gdb = glob.glob('d/gtc/**/*.gdb', recursive=True)[0]; p('GTC', gdb); explorer(gdb)
-          except Exception as e: p('GTC erreur', e)
-          try:
               z = get('https://stqc380donopppdtce01.blob.core.windows.net/donnees-ouvertes/Base_donnees_zones_inondables/BDZI_GPK.zip', 'd/bdzi.zip')
-              zipfile.ZipFile(z).extractall('d/bdzi'); g = glob.glob('d/bdzi/**/*.gpkg', recursive=True); p('BDZI', g, [os.path.getsize(x) // 1000000 for x in g]); explorer(g[0])
+              zipfile.ZipFile(z).extractall('d/bdzi'); g = glob.glob('d/bdzi/**/*.gpkg', recursive=True)[0]
+              for lyr in pyogrio.list_layers(g):
+                  name = lyr[0]; info = pyogrio.read_info(g, layer=name)
+                  p('COUCHE', name, info.get('geometry_type'), info.get('features'))
+                  p('   champs', list(info['fields'])[:30])
+                  if info.get('geometry_type') and 'Polygon' in str(info.get('geometry_type')):
+                      df = pyogrio.read_dataframe(g, layer=name, read_geometry=False)
+                      for c in ('Description', 'Indicatif', 'Etat', 'TYPE', 'Type', 'Recurrence', 'RECURRENCE', 'Rec', 'Proprio'):
+                          if c in df.columns:
+                              p('   ', c, df[c].value_counts().head(12).to_dict())
           except Exception as e: p('BDZI erreur', e)
           open('diag.txt', 'w').write('\n'.join(out))
           print('\n'.join(out))
