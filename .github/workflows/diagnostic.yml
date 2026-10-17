@@ -21,35 +21,35 @@ jobs:
           out = []
           def p(*a): out.append(' '.join(str(x) for x in a))
           H = {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/130 Safari/537.36'}
-          # 1. Domaines autorisés de la connexion Firebase (configuration publique)
-          try:
-              r = requests.get('https://www.googleapis.com/identitytoolkit/v3/relyingparty/getProjectConfig',
-                               params={'key': 'AIzaSyBmUsWxyQirLPUWegzGiLAIEEFYSHZKcEo'}, timeout=30)
-              j = r.json(); p('FIREBASE', r.status_code, json.dumps({k: j.get(k) for k in ('authorizedDomains', 'projectId', 'idpConfig')})[:1500])
-          except Exception as e: p('FIREBASE erreur', e)
-          # 2. Imagerie aérienne du Québec (WMTS)
-          for u in ['https://servicesmatriciels.mern.gouv.qc.ca/erdas-iws/ogc/wmts/Imagerie_Continue/Imagerie_GQ/default/GoogleMapsCompatibleExt2:epsg:3857/17/46875/38744.jpg',
-                    'https://servicesmatriciels.mern.gouv.qc.ca/erdas-iws/ogc/wmts/?service=WMTS&request=GetCapabilities',
-                    'https://geoegl.msp.gouv.qc.ca/apis/carto/wmts/1.0.0/orthos/default/GoogleMapsCompatible/17/46875/38744.jpeg',
-                    'https://geoegl.msp.gouv.qc.ca/apis/carto/tms/1.0.0/orthos@EPSG_3857/17/38744/84196.jpeg']:
+          import io, csv
+          for u in ['https://mamh.gouv.qc.ca/fichiersdonneesouvertes/PF-2024-2025.csv',
+                    'https://mamh.gouv.qc.ca/fichiersdonneesouvertes/Données-prévisionnelles-non-auditées-2026-SimpleOccurrence.csv']:
               try:
-                  r = requests.get(u, timeout=40, headers=H)
-                  p('TUILE', r.status_code, r.headers.get('content-type'), len(r.content), 'CORS=', r.headers.get('access-control-allow-origin'), u)
-                  if 'xml' in (r.headers.get('content-type') or '') or 'Capabilities' in u:
-                      t = r.text
-                      import re
-                      p('  couches:', re.findall(r'<ows:Identifier>([^<]+)</ows:Identifier>', t)[:60])
-                      p('  gabarits:', re.findall(r'template="([^"]+)"', t)[:10])
-              except Exception as e: p('TUILE erreur', type(e).__name__, u)
-          # 3. Taux de taxation des municipalités (Données Québec)
-          for q in ['taux global de taxation', 'taux de taxe foncière municipalités', 'prévisions budgétaires municipalités']:
-              try:
-                  r = requests.get('https://www.donneesquebec.ca/recherche/api/3/action/package_search', params={'q': q, 'rows': 6}, timeout=40, headers=H)
-                  for d in r.json()['result']['results']:
-                      p('CKAN', q, '|', d['name'], '|', d.get('organization', {}).get('title'))
-                      for res in d.get('resources', [])[:8]:
-                          p('    ', res.get('format'), res.get('name'), res.get('url'))
-              except Exception as e: p('CKAN erreur', q, type(e).__name__, e)
+                  r = requests.get(u, timeout=300, headers=H)
+                  raw = r.content
+                  for enc in ('utf-8-sig', 'cp1252', 'latin-1'):
+                      try: txt = raw.decode(enc); break
+                      except Exception: pass
+                  p('FICHIER', r.status_code, len(raw), enc, u)
+                  first = txt.splitlines()[:3]
+                  delim = ';' if first[0].count(';') > first[0].count(',') else ','
+                  rows = list(csv.reader(io.StringIO(txt), delimiter=delim))
+                  head = rows[0]
+                  p('  nb colonnes', len(head), 'nb lignes', len(rows))
+                  p('  entêtes (60 premières):', head[:60])
+                  hits = [ (i,h) for i,h in enumerate(head) if any(k in h.lower() for k in ('taux', 'tgt', 'foncier', 'résiden', 'residen'))]
+                  p('  colonnes taux/foncier:', hits[:80])
+                  mtl = [r_ for r_ in rows[1:] if any('Montréal' == c.strip() or '66023' in c for c in r_[:6])][:2]
+                  for r_ in mtl:
+                      p('  MTL:', [(head[i], r_[i]) for i,_ in hits[:40] if i < len(r_)])
+                      p('  MTL début:', list(zip(head[:12], r_[:12])))
+                  if len(head) < 15:
+                      for r_ in rows[1:6]: p('  ligne:', r_)
+                      codes = {}
+                      for r_ in rows[1:]:
+                          if len(r_) > 3: codes[r_[2] if len(r_)>2 else ''] = r_
+                      p('  exemples codes:', list(codes.items())[:3])
+              except Exception as e: p('FICHIER erreur', type(e).__name__, e, u)
           open('diag.txt', 'w').write('\n'.join(out))
           print('\n'.join(out))
       - name: Publication du résultat
