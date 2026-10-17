@@ -13,40 +13,39 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: pip install requests
+      - run: pip install requests pandas
       - name: Sondes
         shell: python
         run: |
-          import json, requests
+          import io, json, zipfile, requests, pandas as pd
           out = []
           def p(*a): out.append(' '.join(str(x) for x in a))
           H = {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/130 Safari/537.36'}
-          import io, csv
-          r = requests.get('https://www.donneesquebec.ca/recherche/api/3/action/package_show', params={'id': 'rapport-financier-des-organismes-municipaux-et-autres-documents'}, timeout=60, headers=H)
-          res_list = r.json()['result']['resources']
-          for res in res_list[:40]:
-              p('RES', res.get('format'), '|', res.get('name'), '|', res.get('url'))
-          codes = {}
-          for res in res_list:
-              n = (res.get('name') or '').lower()
-              if '2026' in n and ('poste' in n or 'description' in n or 'dictionnaire' in n):
-                  txt = requests.get(res['url'], timeout=120, headers=H).content.decode('utf-8-sig', errors='replace')
-                  p('DESC', res['name'], len(txt))
-                  for line in txt.splitlines():
-                      l = line.lower()
-                      if 'taux' in l or 'tgt' in l or 'résidentiel' in l and 'foncière' in l:
-                          p('  ', line[:260])
-                          parts = line.replace(';', ',').split(',')
-                          for x in parts:
-                              if x.strip('"')[:4] in ('CPAA', 'CPAL', 'CPAB', 'CPAT') or x.strip('"').startswith('CP'):
-                                  codes[x.strip('"')] = line[:120]
-                  break
-          raw = requests.get('https://mamh.gouv.qc.ca/fichiersdonneesouvertes/Données-prévisionnelles-non-auditées-2026-SimpleOccurrence.csv', timeout=200, headers=H).content.decode('utf-8-sig')
-          rows = list(csv.reader(io.StringIO(raw)))
-          head = rows[0]
-          for r_ in rows[1:]:
-              if r_[0] in ('66023', '65005', '94068'):
-                  p('VAL', r_[1], [(h, r_[i]) for i, h in enumerate(head) if h in codes][:60])
+          CK = 'https://www.donneesquebec.ca/recherche/api/3/action/package_search'
+          for q in ['établissements scolaires', 'écoles primaires secondaires localisation', 'zones inondables', 'terrains contaminés',
+                    'centres de la petite enfance', 'services de garde', 'arrêts transport collectif GTFS', 'indice défavorisation écoles']:
+              try:
+                  r = requests.get(CK, params={'q': q, 'rows': 5}, timeout=60, headers=H)
+                  for d in r.json()['result']['results']:
+                      p('CKAN', q, '|', d['name'], '|', (d.get('organization') or {}).get('title'))
+                      for res in d.get('resources', [])[:6]:
+                          p('    ', res.get('format'), '|', res.get('name'), '|', res.get('url'))
+              except Exception as e: p('CKAN erreur', q, e)
+          for pid in ('14100387', '34100127', '34100133'):
+              try:
+                  b = requests.get(f'https://www150.statcan.gc.ca/n1/tbl/csv/{pid}-eng.zip', headers=H, timeout=600).content
+                  z = zipfile.ZipFile(io.BytesIO(b)); n = [x for x in z.namelist() if 'Meta' not in x][0]
+                  df = pd.read_csv(z.open(n), dtype=str, encoding='utf-8-sig')
+                  p('## TABLE', pid, len(b) // 1000, 'ko', 'lignes', len(df))
+                  p('  colonnes :', list(df.columns))
+                  q = df[df['GEO'].str.contains('Québec|Quebec|Montréal|Montreal', na=False)]
+                  p('  GEO exemples :', q['GEO'].unique().tolist()[:40])
+                  for c in df.columns:
+                      if c not in ('REF_DATE', 'GEO', 'DGUID', 'UOM', 'UOM_ID', 'SCALAR_FACTOR', 'SCALAR_ID', 'VECTOR', 'COORDINATE', 'VALUE', 'STATUS', 'SYMBOL', 'TERMINATED', 'DECIMALS'):
+                          p('  -', c, ':', df[c].unique().tolist()[:25])
+                  p('  dernières dates :', sorted(df['REF_DATE'].unique())[-4:])
+                  p(q.tail(6).to_string()[:2500])
+              except Exception as e: p('TABLE erreur', pid, type(e).__name__, e)
           open('diag.txt', 'w').write('\n'.join(out))
           print('\n'.join(out))
       - name: Publication du résultat
