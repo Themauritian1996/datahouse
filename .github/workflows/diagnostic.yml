@@ -22,34 +22,25 @@ jobs:
           def p(*a): out.append(' '.join(str(x) for x in a))
           H = {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/130 Safari/537.36'}
           import io, csv
-          for u in ['https://mamh.gouv.qc.ca/fichiersdonneesouvertes/PF-2024-2025.csv',
-                    'https://mamh.gouv.qc.ca/fichiersdonneesouvertes/Données-prévisionnelles-non-auditées-2026-SimpleOccurrence.csv']:
-              try:
-                  r = requests.get(u, timeout=300, headers=H)
-                  raw = r.content
-                  for enc in ('utf-8-sig', 'cp1252', 'latin-1'):
-                      try: txt = raw.decode(enc); break
-                      except Exception: pass
-                  p('FICHIER', r.status_code, len(raw), enc, u)
-                  first = txt.splitlines()[:3]
-                  delim = ';' if first[0].count(';') > first[0].count(',') else ','
-                  rows = list(csv.reader(io.StringIO(txt), delimiter=delim))
-                  head = rows[0]
-                  p('  nb colonnes', len(head), 'nb lignes', len(rows))
-                  p('  entêtes (60 premières):', head[:60])
-                  hits = [ (i,h) for i,h in enumerate(head) if any(k in h.lower() for k in ('taux', 'tgt', 'foncier', 'résiden', 'residen'))]
-                  p('  colonnes taux/foncier:', hits[:80])
-                  mtl = [r_ for r_ in rows[1:] if any('Montréal' == c.strip() or '66023' in c for c in r_[:6])][:2]
-                  for r_ in mtl:
-                      p('  MTL:', [(head[i], r_[i]) for i,_ in hits[:40] if i < len(r_)])
-                      p('  MTL début:', list(zip(head[:12], r_[:12])))
-                  if len(head) < 15:
-                      for r_ in rows[1:6]: p('  ligne:', r_)
-                      codes = {}
-                      for r_ in rows[1:]:
-                          if len(r_) > 3: codes[r_[2] if len(r_)>2 else ''] = r_
-                      p('  exemples codes:', list(codes.items())[:3])
-              except Exception as e: p('FICHIER erreur', type(e).__name__, e, u)
+          r = requests.get('https://www.donneesquebec.ca/recherche/api/3/action/package_show', params={'id': 'profil-financier-des-municipalites-locales'}, timeout=60, headers=H)
+          for res in r.json()['result']['resources']:
+              p('RES', res.get('format'), '|', res.get('name'), '|', res.get('url'))
+          raw = requests.get('https://mamh.gouv.qc.ca/fichiersdonneesouvertes/PF-2024-2025.csv', timeout=120, headers=H).content.decode('utf-8-sig')
+          rows = list(csv.reader(io.StringIO(raw), delimiter=';' if raw.splitlines()[0].count(';') > raw.splitlines()[0].count(',') else ','))
+          head = rows[0]
+          for r_ in rows[1:]:
+              if r_[2] in ('66023', '65005', '23027', '58227', '94068'):
+                  p('PF', r_[3], [(head[i], r_[i]) for i in range(12, len(head))])
+          for res in r.json()['result']['resources']:
+              n = (res.get('name') or '').lower()
+              if any(k in n for k in ('dictionnaire', 'métadonnées', 'metadonnees', 'description', 'variables', 'guide')):
+                  try:
+                      d = requests.get(res['url'], timeout=120, headers=H)
+                      txt = d.content.decode('utf-8-sig', errors='replace')
+                      for line in txt.splitlines():
+                          if 'FIALX' in line or 'taux' in line.lower():
+                              p('DICO', line[:300])
+                  except Exception as e: p('DICO erreur', e)
           open('diag.txt', 'w').write('\n'.join(out))
           print('\n'.join(out))
       - name: Publication du résultat
