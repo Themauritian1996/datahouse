@@ -22,25 +22,31 @@ jobs:
           def p(*a): out.append(' '.join(str(x) for x in a))
           H = {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/130 Safari/537.36'}
           import io, csv
-          r = requests.get('https://www.donneesquebec.ca/recherche/api/3/action/package_show', params={'id': 'profil-financier-des-municipalites-locales'}, timeout=60, headers=H)
-          for res in r.json()['result']['resources']:
+          r = requests.get('https://www.donneesquebec.ca/recherche/api/3/action/package_show', params={'id': 'rapport-financier-des-organismes-municipaux-et-autres-documents'}, timeout=60, headers=H)
+          res_list = r.json()['result']['resources']
+          for res in res_list[:40]:
               p('RES', res.get('format'), '|', res.get('name'), '|', res.get('url'))
-          raw = requests.get('https://mamh.gouv.qc.ca/fichiersdonneesouvertes/PF-2024-2025.csv', timeout=120, headers=H).content.decode('utf-8-sig')
-          rows = list(csv.reader(io.StringIO(raw), delimiter=';' if raw.splitlines()[0].count(';') > raw.splitlines()[0].count(',') else ','))
+          codes = {}
+          for res in res_list:
+              n = (res.get('name') or '').lower()
+              if '2026' in n and ('poste' in n or 'description' in n or 'dictionnaire' in n):
+                  txt = requests.get(res['url'], timeout=120, headers=H).content.decode('utf-8-sig', errors='replace')
+                  p('DESC', res['name'], len(txt))
+                  for line in txt.splitlines():
+                      l = line.lower()
+                      if 'taux' in l or 'tgt' in l or 'résidentiel' in l and 'foncière' in l:
+                          p('  ', line[:260])
+                          parts = line.replace(';', ',').split(',')
+                          for x in parts:
+                              if x.strip('"')[:4] in ('CPAA', 'CPAL', 'CPAB', 'CPAT') or x.strip('"').startswith('CP'):
+                                  codes[x.strip('"')] = line[:120]
+                  break
+          raw = requests.get('https://mamh.gouv.qc.ca/fichiersdonneesouvertes/Données-prévisionnelles-non-auditées-2026-SimpleOccurrence.csv', timeout=200, headers=H).content.decode('utf-8-sig')
+          rows = list(csv.reader(io.StringIO(raw)))
           head = rows[0]
           for r_ in rows[1:]:
-              if r_[2] in ('66023', '65005', '23027', '58227', '94068'):
-                  p('PF', r_[3], [(head[i], r_[i]) for i in range(12, len(head))])
-          for res in r.json()['result']['resources']:
-              n = (res.get('name') or '').lower()
-              if any(k in n for k in ('dictionnaire', 'métadonnées', 'metadonnees', 'description', 'variables', 'guide')):
-                  try:
-                      d = requests.get(res['url'], timeout=120, headers=H)
-                      txt = d.content.decode('utf-8-sig', errors='replace')
-                      for line in txt.splitlines():
-                          if 'FIALX' in line or 'taux' in line.lower():
-                              p('DICO', line[:300])
-                  except Exception as e: p('DICO erreur', e)
+              if r_[0] in ('66023', '65005', '94068'):
+                  p('VAL', r_[1], [(h, r_[i]) for i, h in enumerate(head) if h in codes][:60])
           open('diag.txt', 'w').write('\n'.join(out))
           print('\n'.join(out))
       - name: Publication du résultat
