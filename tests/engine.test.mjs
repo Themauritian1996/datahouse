@@ -90,7 +90,7 @@ test('zones de loyer : équilibre et paliers', () => {
 
 test('frais de copropriété estimés selon superficie, âge et taille', () => {
   const f = fraisCondo({ t: 'C', aire: 80, an: 2018 }, 40);
-  assert.ok(f.mensuel > 200 && f.mensuel < 300, f.mensuel); // 861 pi² × 0,27 $
+  assert.ok(f.mensuel > 280 && f.mensuel < 380, f.mensuel); // 861 pi² × ~0,38 $ (immeuble de 40 unités)
   assert.ok(f.bas < f.mensuel && f.mensuel < f.haut);
   assert.equal(fraisCondo({ t: 'U', aire: 80 }, 1), null);
 });

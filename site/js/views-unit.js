@@ -142,7 +142,7 @@ export async function renderUnit(ctx, id, coords) {
   let imm = null; let frais = null; let immHtml = '';
   if (unit.t === 'C') {
     imm = immeuble(unit, await unitsAround(unit.lat, unit.lon, 0), muni, meta);
-    frais = fraisCondo(unit, imm?.unites);
+    frais = fraisCondo(unit, imm?.unites, { valeurM2: unit.aire ? est.valeur / unit.aire : null });
     if (imm || frais) {
       immHtml = section('L\'immeuble', `<div class="grid2">
         ${imm ? row('Unités de copropriété', num(imm.unites)) : ''}
@@ -153,7 +153,8 @@ export async function renderUnit(ctx, id, coords) {
         ${imm?.medianeAire ? row('Superficie médiane', aire(imm.medianeAire)) : ''}
         ${frais ? row('Frais de copropriété estimés', `${money(frais.mensuel)} / mois`) : ''}
         ${frais ? row('Fourchette des frais', `${money(frais.bas)} à ${money(frais.haut)}`) : ''}
-      </div>`, { note: 'Frais estimés selon la superficie, l\'âge et la taille de l\'immeuble (repère québécois : 0,25 $ à 0,40 $ par pi² par mois). Les frais réels figurent au budget du syndicat ; demandez aussi l\'étude du fonds de prévoyance.' });
+        ${frais ? row('Base de calcul', `${frais.parPi2.toFixed(2).replace('.', ',')} $ / pi² / mois · ${{ petit: 'petit immeuble', moyen: 'immeuble moyen', ascenseur: 'immeuble avec ascenseur', tour: 'tour avec services' }[frais.facteurs[0]]}`) : ''}
+      </div>`, { note: 'Frais estimés selon la superficie, l\'âge et la taille de l\'immeuble (petit immeuble 0,20-0,28 $, immeuble avec ascenseur 0,30-0,40 $, tour 0,45-0,70 $ par pi² par mois, majorés pour les fonds de prévoyance exigés depuis 2023). Entrez les frais réels dans l\'onglet Acheteur. Les frais réels figurent au budget du syndicat ; demandez aussi l\'étude du fonds de prévoyance.' });
     }
   }
   const position = ts ? section(`Position parmi les ${typeLabel.toLowerCase()}s de ${muni.nom}`, `
@@ -248,6 +249,11 @@ export async function renderUnit(ctx, id, coords) {
   environs(unit.lat, unit.lon).then((osm) => { if (osm) { ctxTab.osm = osm; ctxTab.majDecision(); } }).catch(() => {});
   const show = (k) => {
     $$('.tab', body).forEach((t) => t.classList.toggle('on', t.dataset.tab === k));
+    if (body.dataset.onglets) {
+      const t = $(`.tab[data-tab="${k}"]`, body);
+      t?.parentElement.scrollTo({ left: t.offsetLeft - t.parentElement.clientWidth / 2 + t.clientWidth / 2, behavior: 'smooth' });
+    }
+    body.dataset.onglets = '1';
     RENDER[k](panel, ctxTab);
   };
   $$('.tab', body).forEach((t) => t.addEventListener('click', () => show(t.dataset.tab)));

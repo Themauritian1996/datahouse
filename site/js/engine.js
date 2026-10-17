@@ -138,25 +138,37 @@ export function immeuble(unit, units, muni, meta) {
 
 /**
  * Frais de copropriété mensuels estimés (aucune source publique ne les publie).
- * Repère usuel au Québec : environ 0,25 $ à 0,40 $ par pi² habitable par mois, selon l'âge
- * et la taille de l'immeuble (ascenseurs, aires communes, fonds de prévoyance).
+ * Modèle par pied carré habitable, calé sur les budgets usuels des syndicats au Québec :
+ * - petit immeuble sans ascenseur (≤ 6 unités, souvent autogéré) : environ 0,20-0,28 $/pi²
+ * - immeuble moyen avec ascenseur : 0,30-0,40 $/pi²
+ * - tour avec services (piscine, gym, concierge) : 0,45-0,70 $/pi²
+ * Ajustements : âge, gamme (valeur au pi²) et hausse des fonds de prévoyance exigée depuis 2023 (loi 16).
  */
-export function fraisCondo(unit, nbUnites) {
+export function fraisCondo(unit, nbUnites, { valeurM2 = null } = {}) {
   if (unit.t !== 'C' || !unit.aire) return null;
   const pi2 = unit.aire * 10.7639;
-  let taux = 0.31;
+  const n = nbUnites || 0;
+  const et = unit.et || 0;
   const facteurs = [];
+  let taux;
+  if (n && n <= 6 && et <= 3) { taux = 0.24; facteurs.push('petit'); }
+  else if (et >= 10 || n >= 100) { taux = 0.48; facteurs.push('tour'); }
+  else if (et >= 5 || n >= 30) { taux = 0.38; facteurs.push('ascenseur'); }
+  else { taux = 0.30; facteurs.push('moyen'); }
   if (unit.an) {
     if (unit.an < 1975) { taux += 0.06; facteurs.push('age-ancien'); }
-    else if (unit.an < 2000) { taux += 0.03; facteurs.push('age-moyen'); }
-    else if (unit.an >= 2015) { taux -= 0.04; facteurs.push('age-recent'); }
+    else if (unit.an < 2000) { taux += 0.04; facteurs.push('age-moyen'); }
+    else if (unit.an >= 2018) { taux -= 0.03; facteurs.push('age-recent'); }
   }
-  if (nbUnites) {
-    if (nbUnites <= 6) { taux -= 0.06; facteurs.push('petit'); }
-    else if (nbUnites >= 80) { taux += 0.05; facteurs.push('grand'); }
-  }
-  const mensuel = round(pi2 * taux, 5);
-  return { mensuel, bas: round(mensuel * 0.75, 5), haut: round(mensuel * 1.3, 5), parPi2: taux, facteurs };
+  // Gamme : une unité de luxe (> 900 $/pi² estimé) a généralement plus de services et d'entretien.
+  const vpi2 = valeurM2 ? valeurM2 / 10.7639 : null;
+  if (vpi2 && vpi2 > 900) { taux += 0.08; facteurs.push('luxe'); }
+  else if (vpi2 && vpi2 < 300) { taux -= 0.03; facteurs.push('abordable'); }
+  taux *= 1.08; // fonds de prévoyance renforcés (loi 16)
+  // Petites unités : une part fixe des frais (assurance, gestion) pèse davantage.
+  const plancher = n && n <= 6 ? 120 : 180;
+  const mensuel = round(Math.max(plancher, pi2 * taux), 5);
+  return { mensuel, bas: round(mensuel * 0.8, 5), haut: round(mensuel * 1.35, 5), parPi2: Math.round((mensuel / pi2) * 100) / 100, facteurs };
 }
 
 /**
