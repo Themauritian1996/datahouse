@@ -3,34 +3,59 @@ name: Diagnostic des sources
 on:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
-  recensement:
+  sondes:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: pip install pandas requests
-      - name: Structure des tableaux du recensement
+      - run: pip install requests
+      - name: Sondes
         shell: python
         run: |
-          import io, os, zipfile, requests, pandas as pd
-          S = open(os.environ['GITHUB_STEP_SUMMARY'], 'a')
-          def out(t): print(t); S.write(str(t) + '\n\n')
-          for pid in ('98100255', '98100257', '98100060', '98100245'):
-              b = requests.get(f'https://www150.statcan.gc.ca/n1/tbl/csv/{pid}-eng.zip', headers={'User-Agent': 'Mozilla/5.0'}, timeout=600).content
-              z = zipfile.ZipFile(io.BytesIO(b)); n = [x for x in z.namelist() if 'Meta' not in x][0]
-              out(f'## {pid} : {len(b)/1e6:.0f} Mo zip')
-              head = pd.read_csv(z.open(n), nrows=5, dtype=str, encoding='utf-8-sig')
-              out('COLONNES : ' + ' | '.join(head.columns))
-              mtl = []
-              for ch in pd.read_csv(z.open(n), chunksize=300000, dtype=str, encoding='utf-8-sig'):
-                  mtl.append(ch[ch['DGUID'].astype(str).str.endswith('2466023')])
-              m = pd.concat(mtl)
-              out(f'Lignes Montréal : {len(m)}')
-              for c in m.columns:
-                  if c in ('REF_DATE', 'GEO', 'DGUID', 'COORDINATE', 'VECTOR', 'UOM_ID', 'SCALAR_ID', 'SCALAR_FACTOR', 'STATUS', 'SYMBOL', 'TERMINATED', 'DECIMALS', 'VALUE', 'UOM'):
-                      continue
-                  u = m[c].dropna().unique().tolist()
-                  out(f'- {c} ({len(u)}) : ' + ' ; '.join(map(str, u[:60])))
-              out('```\n' + m.head(12).to_string()[:3000] + '\n```')
+          import json, requests
+          out = []
+          def p(*a): out.append(' '.join(str(x) for x in a))
+          H = {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/130 Safari/537.36'}
+          # 1. Domaines autorisés de la connexion Firebase (configuration publique)
+          try:
+              r = requests.get('https://www.googleapis.com/identitytoolkit/v3/relyingparty/getProjectConfig',
+                               params={'key': 'AIzaSyBmUsWxyQirLPUWegzGiLAIEEFYSHZKcEo'}, timeout=30)
+              j = r.json(); p('FIREBASE', r.status_code, json.dumps({k: j.get(k) for k in ('authorizedDomains', 'projectId', 'idpConfig')})[:1500])
+          except Exception as e: p('FIREBASE erreur', e)
+          # 2. Imagerie aérienne du Québec (WMTS)
+          for u in ['https://servicesmatriciels.mern.gouv.qc.ca/erdas-iws/ogc/wmts/Imagerie_Continue/Imagerie_GQ/default/GoogleMapsCompatibleExt2:epsg:3857/17/46875/38744.jpg',
+                    'https://servicesmatriciels.mern.gouv.qc.ca/erdas-iws/ogc/wmts/?service=WMTS&request=GetCapabilities',
+                    'https://geoegl.msp.gouv.qc.ca/apis/carto/wmts/1.0.0/orthos/default/GoogleMapsCompatible/17/46875/38744.jpeg',
+                    'https://geoegl.msp.gouv.qc.ca/apis/carto/tms/1.0.0/orthos@EPSG_3857/17/38744/84196.jpeg']:
+              try:
+                  r = requests.get(u, timeout=40, headers=H)
+                  p('TUILE', r.status_code, r.headers.get('content-type'), len(r.content), 'CORS=', r.headers.get('access-control-allow-origin'), u)
+                  if 'xml' in (r.headers.get('content-type') or '') or 'Capabilities' in u:
+                      t = r.text
+                      import re
+                      p('  couches:', re.findall(r'<ows:Identifier>([^<]+)</ows:Identifier>', t)[:60])
+                      p('  gabarits:', re.findall(r'template="([^"]+)"', t)[:10])
+              except Exception as e: p('TUILE erreur', type(e).__name__, u)
+          # 3. Taux de taxation des municipalités (Données Québec)
+          for q in ['taux global de taxation', 'taux de taxe foncière municipalités', 'prévisions budgétaires municipalités']:
+              try:
+                  r = requests.get('https://www.donneesquebec.ca/recherche/api/3/action/package_search', params={'q': q, 'rows': 6}, timeout=40, headers=H)
+                  for d in r.json()['result']['results']:
+                      p('CKAN', q, '|', d['name'], '|', d.get('organization', {}).get('title'))
+                      for res in d.get('resources', [])[:8]:
+                          p('    ', res.get('format'), res.get('name'), res.get('url'))
+              except Exception as e: p('CKAN erreur', q, type(e).__name__, e)
+          open('diag.txt', 'w').write('\n'.join(out))
+          print('\n'.join(out))
+      - name: Publication du résultat
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release view diagnostic >/dev/null 2>&1 || gh release create diagnostic --title "Diagnostic" --notes "Résultats techniques des sondes."
+          gh release upload diagnostic diag.txt --clobber
