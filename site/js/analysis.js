@@ -12,22 +12,32 @@ node${a(1500)}[railway~"^(station|halt|subway_entrance|tram_stop)$"];
 node${a(1500)}[public_transport=station];
 nwr${a(1000)}[amenity~"^(school|kindergarten|childcare)$"];
 nwr${a(600)}[leisure~"^(park|playground)$"];
-nwr${a(1000)}[shop~"^(supermarket|greengrocer|bakery)$"];
-nwr${a(1200)}[amenity~"^(pharmacy|clinic|hospital|doctors)$"];
+nwr${a(1000)}[shop~"^(supermarket|greengrocer|bakery|convenience)$"];
+nwr${a(1200)}[amenity~"^(pharmacy|clinic|hospital|doctors|dentist)$"];
+nwr${a(600)}[amenity~"^(restaurant|cafe|bar|pub|fast_food)$"];
+nwr${a(1500)}[amenity~"^(library|community_centre|theatre|cinema)$"];
+nwr${a(1500)}[leisure~"^(sports_centre|fitness_centre|swimming_pool|ice_rink)$"];
 way${a(200)}[highway~"^(motorway|trunk)$"];
 way${a(120)}[railway=rail];
 way${a(250)}[landuse=industrial];
 nwr${a(4000)}[aeroway=aerodrome];
-);out center tags qt 400;`;
+);out center tags qt 600;`;
 }
 
 const CATS = [
   { k: 'bus', label: 'Arrêt d\'autobus', test: (t) => t.highway === 'bus_stop' },
   { k: 'rail', label: 'Métro, REM, train ou tramway', test: (t) => /station|halt|subway_entrance|tram_stop/.test(t.railway || '') || t.public_transport === 'station' },
   { k: 'ecole', label: 'École ou garderie', test: (t) => /school|kindergarten|childcare/.test(t.amenity || '') },
+  { k: 'garderie', label: 'Garderie ou CPE', test: (t) => /kindergarten|childcare/.test(t.amenity || '') },
   { k: 'parc', label: 'Parc', test: (t) => /park|playground/.test(t.leisure || '') },
   { k: 'epicerie', label: 'Épicerie', test: (t) => /supermarket|greengrocer|bakery/.test(t.shop || '') },
+  { k: 'depanneur', label: 'Dépanneur', test: (t) => t.shop === 'convenience' },
   { k: 'sante', label: 'Pharmacie ou clinique', test: (t) => /pharmacy|clinic|hospital|doctors/.test(t.amenity || '') },
+  { k: 'pharmacie', label: 'Pharmacie', test: (t) => t.amenity === 'pharmacy' },
+  { k: 'clinique', label: 'Clinique ou hôpital', test: (t) => /clinic|hospital|doctors/.test(t.amenity || '') },
+  { k: 'restos', label: 'Restaurants et cafés', test: (t) => /restaurant|cafe|bar|pub|fast_food/.test(t.amenity || '') },
+  { k: 'culture', label: 'Bibliothèque ou centre culturel', test: (t) => /library|community_centre|theatre|cinema/.test(t.amenity || '') },
+  { k: 'sport', label: 'Centre sportif, piscine ou aréna', test: (t) => /sports_centre|fitness_centre|swimming_pool|ice_rink/.test(t.leisure || '') },
   { k: 'autoroute', label: 'Autoroute', test: (t) => /motorway|trunk/.test(t.highway || ''), nuisance: true },
   { k: 'voieFerree', label: 'Voie ferrée', test: (t) => t.railway === 'rail', nuisance: true },
   { k: 'industriel', label: 'Zone industrielle', test: (t) => t.landuse === 'industrial', nuisance: true },
@@ -38,7 +48,7 @@ const cache = new Map();
 
 /** Commodités et nuisances autour d'un point (cache par session). */
 export async function environs(lat, lon) {
-  const key = `${lat.toFixed(4)},${lon.toFixed(4)}`;
+  const key = `v2:${lat.toFixed(4)},${lon.toFixed(4)}`;
   if (cache.has(key)) return cache.get(key);
   try {
     const stored = sessionStorage.getItem(`osm:${key}`);

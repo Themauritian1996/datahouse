@@ -2,13 +2,14 @@
 import { CONFIG } from './config.js';
 import {
   analyseAcheteur, analyseVendeur, analyseInvestisseur, indiceRevente, median, scores, zonesPrix, palierPrix, zonesLoyer, palierLoyer,
-  loyerEstime, ecartComparables, taxesFoncieres,
+  loyerEstime, ecartComparables, taxesFoncieres, grillePrix, grilleLoyer,
 } from './engine.js';
 import { prosCons, environs } from './analysis.js';
 import { fmt, uniteLabel } from './format.js';
-import { TYPES, R, PROFILS, PALIERS, FACTEURS, titreComparables } from './i18n.js';
+import { TYPES, R, PROFILS, PALIERS, FACTEURS, NIVEAUX, titreComparables } from './i18n.js';
 import { vueAerienne, photoFacade, enDataUrl, ORTHO_CREDIT } from './photo.js';
 import { langueRapport, unites } from './prefs.js';
+import { lieuxAutour, scoreProximite, niveau5 } from './quartier.js';
 
 export const isNative = () => Boolean(window.Capacitor?.isNativePlatform?.());
 
@@ -176,6 +177,7 @@ function pouce(doc, cx, cy, palier, r = 10) {
 }
 
 export async function pdfReport(ctx, user, plan, opts = {}) {
+  if (!user?.uid || !plan?.rapports) throw new Error('Rapport réservé aux comptes (forfait Pro).');
   const lang = opts.lang || langueRapport();
   const u2 = opts.unites || unites();
   const L = R[lang];
@@ -364,6 +366,32 @@ export async function pdfReport(ctx, user, plan, opts = {}) {
     para(L.zonesLoyerNote, 8, C.muted);
   }
 
+  // ---------- Repères chiffrés (5 niveaux) ----------
+  const N = NIVEAUX[lang];
+  const gp = grillePrix(est, st);
+  const plage = (g, fm = F.money) => (g.de == null ? `< ${fm(g.a)}` : g.a == null ? `> ${fm(g.de)}` : `${fm(g.de)} - ${fm(g.a)}`);
+  const sym = (n) => ({ 2: '++', 1: '+', 0: '=', '-1': '-', '-2': '--' }[n]);
+  const ecartV = (g, ref) => {
+    const p = (x) => `${x > ref ? '+' : ''}${Math.round((x / ref - 1) * 100)} %`;
+    return g.de == null ? `< ${p(g.a)}` : g.a == null ? `> ${p(g.de)}` : `${p(g.de)} / ${p(g.a)}`;
+  };
+  const tonLigne = (n) => (n > 0 ? C.good : n < 0 ? C.bad : C.mid);
+  const colorer = (rows) => ({ didParseCell: (d) => { if (d.section === 'body' && d.column.index === 0) { d.cell.styles.textColor = tonLigne(rows[d.row.index]); d.cell.styles.fontStyle = 'bold'; } } });
+  h2(L.reperes, 150);
+  const lignesAV = gp.acheteur.map((g, k) => [sym(g.niveau), plage(g), ecartV(g, est.valeur), N.acheteur[g.cle], N.vendeur[gp.vendeur[k].cle]]);
+  table([lang === 'en' ? 'Buyer' : 'Ach.', L.prix, lang === 'en' ? 'vs estimate' : 'vs valeur', L.acheteur, L.vendeur], lignesAV,
+    { columnStyles: { 0: { halign: 'center', cellWidth: 34 }, 1: { halign: 'right' }, 2: { halign: 'right', textColor: C.muted } }, ...colorer(gp.acheteur.map((g) => g.niveau)) });
+  if (gp.investisseur) {
+    table([lang === 'en' ? 'Inv.' : 'Inv.', L.prix, L.tga, L.investisseur], gp.investisseur.map((g) => [sym(g.niveau), plage(g), lang === 'en' ? g.cap.replace('et plus', 'or more').replace('moins de', 'under').replace(' à ', ' to ') : g.cap, N.investisseur[g.cle]]),
+      { columnStyles: { 0: { halign: 'center', cellWidth: 34 }, 1: { halign: 'right' } }, ...colorer(gp.investisseur.map((g) => g.niveau)) });
+  }
+  const glo = grilleLoyer(loyerEstime(unit, muni));
+  if (glo && st.loyer) {
+    table([lang === 'en' ? 'Rent' : 'Loyer', L.loyerLog, lang === 'en' ? 'vs market' : 'vs marché', ''], glo.map((g) => [sym(g.niveau), plage(g), ecartV(g, loyerEstime(unit, muni)), N.loyer[g.cle]]),
+      { columnStyles: { 0: { halign: 'center', cellWidth: 34 }, 1: { halign: 'right' }, 2: { halign: 'right', textColor: C.muted } }, ...colorer(glo.map((g) => g.niveau)) });
+  }
+  para(L.reperesNote, 8, C.muted);
+
   // ---------- Synthèse ----------
   h2(L.synthese);
   para(synthese({ unit, muni, est, pc, comps, st, meta, imm, frais }, lang), 10.5, C.ink);
@@ -408,12 +436,42 @@ export async function pdfReport(ctx, user, plan, opts = {}) {
     ['pctProprio', c.pctProprio, (v) => F.pct(v, 0)], ['pctLocataires', c.pctProprio == null ? null : 100 - c.pctProprio, (v) => F.pct(v, 0)],
     ['pctInabordableLocataire', c.pctInabordableLocataire, (v) => F.pct(v, 0)], ['pctInabordableProprio', c.pctInabordableProprio, (v) => F.pct(v, 0)],
     ['pctBesoinImperieux', c.pctBesoinImperieux, (v) => F.pct(v, 0)], ['ageMoyen', c.ageMoyen, F.num1], ['ageMedian', c.ageMedian, F.num1],
-    ['pct65', c.pct65, (v) => F.pct(v, 0)], ['valeurDeclaree2021', c.valeurDeclaree2021, F.money],
+    ['pct65', c.pct65, (v) => F.pct(v, 0)], ['pct20_34', c.pct20_34, (v) => F.pct(v, 0)],
+    ['pctMenagesEnfants', c.pctMenagesEnfants, (v) => F.pct(v, 0)], ['menages1', c.menages1, (v) => F.pct(v, 0)],
+    ['pctDemenage1an', c.pctDemenage1an, (v) => F.pct(v, 0)], ['valeurDeclaree2021', c.valeurDeclaree2021, F.money],
     ['valeurUnifamiliale2021', c.valeurUnifamiliale2021, F.money], ['ratioPrixRevenu', muni.ratioPrixRevenu, F.num1],
     ['rendementPlex', muni.rendementPlex, (v) => F.pct(v)], ['loyer', muni.loyer?.estime, F.money],
   ].filter((x) => x[1] != null).map(([k, v, f]) => [D[k], f(v)]);
   if (items.length) {
-    h2(`${L.demographie} : ${muni.nom}`);
+    h2(`${L.demographie} : ${muni.nom}`, 200);
+    // Barres : âge, taille des ménages, mode d'occupation
+    const groupes = [
+      [D.groupesAge, [[D.age0_14, c.pct0_14], [D.age15_64, c.pct15_64], [D.age65, c.pct65]]],
+      [D.tailleMenages, [['1', c.menages1], ['2', c.menages2], ['3', c.menages3], ['4', c.menages4], ['5+', c.menages5]]],
+      [D.occupation, c.pctProprio == null ? [] : [[D.pctProprio, c.pctProprio], [D.pctLocataires, 100 - c.pctProprio]]],
+    ].filter(([, v]) => v.filter((x) => x[1] != null).length >= 2);
+    if (groupes.length) {
+      const gw = (W - 2 * M - 20 * (groupes.length - 1)) / groupes.length;
+      let hMax = 0;
+      groupes.forEach(([titre, vals], gi) => {
+        const x0 = M + gi * (gw + 20);
+        doc.setFont('helvetica', 'bold').setFontSize(8.5).setTextColor(...C.ink);
+        t(titre, x0, y + 8);
+        const max = Math.max(...vals.map((v) => v[1] || 0), 1);
+        vals.filter((v) => v[1] != null).forEach(([lab, v], k) => {
+          const yy = y + 20 + k * 13;
+          doc.setFont('helvetica', 'normal').setFontSize(7.5).setTextColor(...C.muted);
+          t(lab, x0, yy + 6);
+          const bx = x0 + 62; const bw = gw - 62 - 30;
+          doc.setFillColor(...C.soft).rect(bx, yy, bw, 7, 'F');
+          doc.setFillColor(...C.good).rect(bx, yy, Math.max(1, bw * v / max), 7, 'F');
+          doc.setTextColor(...C.ink);
+          t(F.pct(v, 0), x0 + gw, yy + 6, { align: 'right' });
+          hMax = Math.max(hMax, 20 + (k + 1) * 13);
+        });
+      });
+      y += hMax + 10;
+    }
     const rows = [];
     for (let k = 0; k < items.length; k += 2) rows.push([...items[k], ...(items[k + 1] || ['', ''])]);
     table(null, rows, { columnStyles: { 0: { textColor: C.muted }, 2: { textColor: C.muted } } });
@@ -438,6 +496,66 @@ export async function pdfReport(ctx, user, plan, opts = {}) {
     [L.revenuRequis, F.money(a.revenuRequis), L.economie, F.money(v.total), L.loyerLog, F.money(st.loyer)],
   ], { styles: { fontSize: 8.5, cellPadding: 3.5 }, columnStyles: { 0: { textColor: C.muted }, 2: { textColor: C.muted }, 4: { textColor: C.muted } } });
   para(L.hypotheses({ taux: F.pct(st.taux, 2), amort: st.amort, taxes: F.money(st.taxes), vac: F.pct(st.vacance, 1), ent: F.pct(st.entretien, 1) }), 8.5, C.muted);
+
+  // ---------- Quartier, économie, risques ----------
+  const LL = (fr, en) => (lang === 'en' ? en : fr);
+  const [ecoles, terrains] = await Promise.all([
+    ctx.ecoles || lieuxAutour('ecoles', unit.lat, unit.lon, 3000).catch(() => []),
+    ctx.terrains || lieuxAutour('terrains', unit.lat, unit.lon, 1000).catch(() => []),
+  ]);
+  const sp = scoreProximite(osm, ecoles);
+  h2(LL('Quartier : services et écoles', 'Neighbourhood: services and schools'), 120);
+  if (sp) {
+    const nv = niveau5(sp.score, [35, 50, 65, 80]);
+    pouce(doc, M + 10, y + 6, nv > 0 ? 'favorable' : nv < 0 ? 'defavorable' : 'neutre', 9);
+    doc.setFont('helvetica', 'bold').setFontSize(16).setTextColor(...C.ink);
+    t(`${sp.score}/100`, M + 26, y + 12);
+    doc.setFont('helvetica', 'normal').setFontSize(8.5).setTextColor(...C.muted);
+    const lp = doc.splitTextToSize(clean(LL('Proximité des services essentiels (indice DataHouse : 80+ excellent, 65-79 bon, 50-64 moyen, 35-49 faible, moins de 35 très faible)',
+      'Access to essential services (DataHouse index: 80+ excellent, 65-79 good, 50-64 average, 35-49 weak, below 35 very weak)')), W - 2 * M - 92);
+    doc.text(lp, M + 92, y + 6);
+    y += Math.max(24, lp.length * 11 + 8);
+    const det = sp.detail.map((d) => [LL(d.l, { 'Transport collectif': 'Public transit', 'Épicerie': 'Grocery', 'École primaire': 'Elementary school', 'École secondaire': 'High school', Garderie: 'Daycare', Parc: 'Park', 'Pharmacie ou clinique': 'Pharmacy or clinic', 'Restaurants et cafés': 'Restaurants and cafés', 'Sport et loisirs': 'Sports and recreation', 'Bibliothèque, culture': 'Library, culture' }[d.l] || d.l), `${d.v}/100`]);
+    const rows = [];
+    for (let k = 0; k < det.length; k += 2) rows.push([...det[k], ...(det[k + 1] || ['', ''])]);
+    table(null, rows, { styles: { fontSize: 8.5, cellPadding: 3 }, columnStyles: { 0: { textColor: C.muted }, 2: { textColor: C.muted } } });
+  }
+  const ec = [...ecoles.filter((e) => e.p).slice(0, 3), ...ecoles.filter((e) => e.s && !e.p).slice(0, 3)];
+  if (ec.length) {
+    table([LL('École', 'School'), LL('Ordre', 'Level'), LL('Réseau', 'Network'), 'IMSE', L.distance],
+      ec.map((e) => [e.n, [e.p ? LL('primaire', 'elementary') : '', e.s ? LL('secondaire', 'high school') : ''].filter(Boolean).join(' + '),
+        `${e.r === 'prive' ? LL('privé', 'private') : LL('public', 'public')}${e.l ? ` (${e.l === 'en' ? LL('anglo', 'English') : LL('franco', 'French')})` : ''}`, e.imse ? `${e.imse}/10` : '—', F.dist(e.d)]),
+      { styles: { fontSize: 8.5, cellPadding: 3 }, columnStyles: { 3: { halign: 'center' }, 4: { halign: 'right' } } });
+    para(LL('IMSE : indice de milieu socio-économique des élèves publié par le ministère de l\'Éducation (1 = le plus favorisé, 10 = le plus défavorisé) ; ce n\'est pas un palmarès. L\'école attribuée se vérifie auprès du centre de services scolaire.',
+      'IMSE: socio-economic index of students published by the Québec Ministry of Education (1 = most advantaged, 10 = most disadvantaged); not a ranking. The assigned school must be confirmed with the school service centre.'), 8, C.muted);
+  }
+  const eco = muni.economie || {};
+  if (eco.chomage != null || eco.inoccupation != null) {
+    h2(LL('Économie régionale', 'Regional economy'), 90);
+    const r = [];
+    if (eco.chomage != null) r.push([LL(`Taux de chômage (${eco.region || ''}, ${eco.periode})`, `Unemployment rate (${eco.region || ''}, ${eco.periode})`), `${F.pct(eco.chomage)}${eco.chomageVar != null ? ` (${F.signedPct(eco.chomageVar)} ${LL('sur un an', 'yoy')})` : ''}`]);
+    if (eco.tauxEmploi != null) r.push([LL('Taux d\'emploi', 'Employment rate'), F.pct(eco.tauxEmploi)]);
+    if (eco.inoccupation != null) r.push([LL(`Taux d'inoccupation des logements (SCHL ${eco.anneeInoccupation})`, `Rental vacancy rate (CMHC ${eco.anneeInoccupation})`), F.pct(eco.inoccupation)]);
+    if (muni.loyer?.schl2ch) r.push([LL(`Loyer moyen d'un 2 chambres (SCHL ${muni.loyer.anneeSCHL})`, `Average 2-bedroom rent (CMHC ${muni.loyer.anneeSCHL})`), F.money(muni.loyer.schl2ch)]);
+    if (muni.ratioPrixRevenu) r.push([LL('Prix médian / revenu des ménages', 'Median price / household income'), F.num1(muni.ratioPrixRevenu)]);
+    table(null, r, { columnStyles: { 0: { textColor: C.muted }, 1: { halign: 'right' } } });
+    para(LL('Repères : chômage sous 5,5 % = marché de l\'emploi solide ; inoccupation sous 3 % = logements qui se louent vite ; prix/revenu sous 6 = abordable, au-delà de 8 = cher.',
+      'Benchmarks: unemployment below 5.5% = strong job market; vacancy below 3% = units rent quickly; price/income below 6 = affordable, above 8 = expensive.'), 8, C.muted);
+  }
+  const risques = [];
+  if (unit.zi === 2) risques.push(['--', LL('Zone inondable de grand courant (0-20 ans)', 'High-velocity flood zone (0-20 years)')]);
+  else if (unit.zi === 1) risques.push(['-', LL('Zone inondable de faible courant (20-100 ans)', 'Low-velocity flood zone (20-100 years)')]);
+  else if (unit.zi === 0) risques.push(['+', LL('Hors des zones inondables cartographiées (BDZI)', 'Outside mapped flood zones (BDZI)')]);
+  const tp = terrains.filter((x) => x.d <= 300);
+  risques.push(tp.length ? [tp[0].d <= 60 ? '--' : '-', LL(`Terrain contaminé répertorié à ${F.dist(tp[0].d)} (${tp.length} dans un rayon de 300 m)`, `Listed contaminated site ${F.dist(tp[0].d)} away (${tp.length} within 300 m)`)]
+    : ['+', LL('Aucun terrain contaminé répertorié à moins de 300 m', 'No listed contaminated site within 300 m')]);
+  if (osm?.autoroute?.n) risques.push(['-', LL(`Autoroute à ${F.dist(osm.autoroute.plusProche)}`, `Highway ${F.dist(osm.autoroute.plusProche)} away`)]);
+  if (osm?.voieFerree?.n) risques.push(['-', LL(`Voie ferrée à ${F.dist(osm.voieFerree.plusProche)}`, `Railway ${F.dist(osm.voieFerree.plusProche)} away`)]);
+  if (unit.an && unit.an < 1970) risques.push(['=', LL('Bâtiment d\'avant 1970 : faire analyser l\'eau (entrée de service en plomb possible)', 'Built before 1970: have the water tested (possible lead service line)')]);
+  if (unit.an && unit.an < 1990) risques.push(['=', LL('Avant 1990 : amiante ou vermiculite possibles', 'Before 1990: possible asbestos or vermiculite')]);
+  h2(LL('Risques et points à vérifier', 'Risks and items to check'), 80);
+  table(null, risques, { columnStyles: { 0: { halign: 'center', cellWidth: 30, fontStyle: 'bold' } },
+    didParseCell: (d) => { if (d.section === 'body' && d.column.index === 0) d.cell.styles.textColor = d.cell.raw.includes('+') ? C.good : d.cell.raw.includes('-') ? C.bad : C.mid; } });
 
   // ---------- Secteur ----------
   h2(L.secteur);

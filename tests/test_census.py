@@ -33,7 +33,10 @@ inc = zip_csv(tmp / "i.zip", "98100057", ["REF_DATE", "GEO", "DGUID", "Household
     "Household income statistics (6):Median household total income (2015) (2020 constant dollars)[4]", "Symbol.3"],
     [["2021", g, d, "Total - Households by household size", "Total – Household type including census family structure", "1", n, "", v, "", v15, ""]
      for (g, d), n, v, v15 in zip(G, [816335, 160000, 500000], [63600, 86000, 90000], [54400, 76000, 80000])]
-    + [["2021", "Montréal", G[0][1], "1 person", "Total – Household type including census family structure", "2", 1, "", 1, "", 1, ""]])
+    + [["2021", "Montréal", G[0][1], s, "Total – Household type including census family structure", "2", n, "", 1, "", 1, ""]
+       for s, n in [("1 person", 326534), ("2 persons", 250000), ("3 persons", 110000), ("4 persons", 80000), ("5 or more persons", 49801)]]
+    + [["2021", "Montréal", G[0][1], "Total - Households by household size", t, "3", n, "", 1, "", 1, ""]
+       for t, n in [("With children", 150000), ("One one-parent census family", 77050), ("Without children", 140000)]])
 
 ten_rows = []
 for (g, d), (o, r) in zip(G, [(297335, 519015), (100000, 60000), (1, 1)]):
@@ -45,7 +48,9 @@ ten = zip_csv(tmp / "t.zip", "98100259", ["REF_DATE", "GEO", "DGUID", "Census ye
 
 age_rows = []
 for (g, d), (tot, p65, moy) in zip(G, [(1762950, 300000, 41.2), (438366, 80000, 42.0), (1, 1, 1)]):
-    for lab, v in [("Total - Age", tot), ("65 years and over", p65), ("Average age", moy), ("Median age", moy - 1)]:
+    for lab, v in [("Total - Age", tot), ("65 years and over", p65), ("Average age", moy), ("Median age", moy - 1),
+                   ("0 to 14 years", tot * 0.15), ("15 to 64 years", tot - p65 - tot * 0.15),
+                   ("20 to 24 years", tot * 0.07), ("25 to 29 years", tot * 0.08), ("30 to 34 years", tot * 0.08)]:
         age_rows.append(["2021", g, d, "2021", lab, "1", v, "", 0, "", 0, ""])
 age = zip_csv(tmp / "a.zip", "98100022", ["REF_DATE", "GEO", "DGUID", "Census year (2)",
     "Age (in single years), average age and median age (128)", "Coordinate", "Gender (3a):Total - Gender[1]", "Symbol",
@@ -70,4 +75,6 @@ assert set(i) == {"66023", "65005"}, i.keys()
 assert i["66023"]["revenuMenage"] == 63600 and i["66023"]["croissanceRevenu"] == 16.9 and i["66023"]["menages"] == 816335
 assert t["66023"]["pctProprio"] == 36.4 and t["66023"]["pctInabordableLocataire"] == 27.8 and t["66023"]["proprietaires"] == 297335
 assert a["66023"]["ageMoyen"] == 41.2 and a["66023"]["pct65"] == 17.0 and a["65005"]["ageMedian"] == 41.0
+assert a["66023"]["pct0_14"] == 15.0 and a["66023"]["pct20_34"] == 23.0
+assert i["66023"]["menages1"] == 40.0 and i["66023"]["pctMenagesEnfants"] == 27.8, i["66023"]
 print("recensement : OK")

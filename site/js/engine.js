@@ -8,9 +8,10 @@ const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
 
 /** Décode une ligne de tuile en objet unité d'évaluation. */
 export function decodeUnit(row, codes) {
-  const [lon, lat, mi, adr, t, lg, an, aire, ter, vr, va, et, li, id] = row;
+  const [lon, lat, mi, adr, t, lg, an, aire, ter, vr, va, et, li, id, zi] = row;
+  // zi : zone inondable (2 = grand courant 0-20 ans, 1 = faible courant 20-100 ans, 0 = hors zone, absent = non calculé)
   return {
-    lon: lon / 1e5, lat: lat / 1e5, muni: codes[mi], adr, t, lg, an, aire, ter, vr, va, et, li, id,
+    lon: lon / 1e5, lat: lat / 1e5, muni: codes[mi], adr, t, lg, an, aire, ter, vr, va, et, li, id, zi: zi ?? null,
   };
 }
 
@@ -215,6 +216,55 @@ export function zonesPrix(est, st, { capFavorable = 5, capDefavorable = 4 } = {}
     }
   }
   return zones;
+}
+
+/**
+ * Grille détaillée à 5 niveaux, avec bornes chiffrées, pour chaque profil.
+ * Chaque niveau : { cle, niveau (2 = très favorable … −2 = très défavorable), de, a } (prix en $, null = ouvert).
+ * Investisseur : bornes de prix correspondant à des taux de capitalisation de 6, 5, 4 et 3 %.
+ */
+export function grillePrix(est, st) {
+  const mb = round((est.bas + est.valeur) / 2, 1000);
+  const mh = round((est.valeur + est.haut) / 2, 1000);
+  const b = round(est.bas, 1000); const h = round(est.haut, 1000);
+  const out = {
+    acheteur: [
+      { cle: 'excellent', niveau: 2, de: null, a: b }, { cle: 'bon', niveau: 1, de: b, a: mb },
+      { cle: 'juste', niveau: 0, de: mb, a: mh }, { cle: 'eleve', niveau: -1, de: mh, a: h }, { cle: 'tropEleve', niveau: -2, de: h, a: null },
+    ],
+    vendeur: [
+      { cle: 'brade', niveau: -2, de: null, a: b }, { cle: 'rapide', niveau: -1, de: b, a: mb },
+      { cle: 'marche', niveau: 0, de: mb, a: mh }, { cle: 'bonPrix', niveau: 1, de: mh, a: h }, { cle: 'ambitieux', niveau: 2, de: h, a: null },
+    ],
+  };
+  if (st && st.loyer > 0) {
+    const rne = rneScenario(st);
+    if (rne > 0) {
+      const p = (cap) => round(rne / (cap / 100), 1000);
+      out.investisseur = [
+        { cle: 'excellent', niveau: 2, de: null, a: p(6), cap: '6 % et plus' }, { cle: 'bon', niveau: 1, de: p(6), a: p(5), cap: '5 à 6 %' },
+        { cle: 'acceptable', niveau: 0, de: p(5), a: p(4), cap: '4 à 5 %' }, { cle: 'faible', niveau: -1, de: p(4), a: p(3), cap: '3 à 4 %' },
+        { cle: 'tresFaible', niveau: -2, de: p(3), a: null, cap: 'moins de 3 %' },
+      ];
+    }
+  }
+  return out;
+}
+
+/** Niveau de la grille où tombe un prix. */
+export function niveauGrille(grille, prix) {
+  return (grille || []).find((g) => (g.de == null || prix >= g.de) && (g.a == null || prix < g.a)) || null;
+}
+
+/** Grille de loyer à 5 niveaux (par logement et par mois) pour l'investisseur. */
+export function grilleLoyer(loyerMarche) {
+  if (!loyerMarche) return null;
+  const r = (f) => round(loyerMarche * f, 5);
+  return [
+    { cle: 'tresBas', niveau: -2, de: null, a: r(0.8) }, { cle: 'bas', niveau: -1, de: r(0.8), a: r(0.9) },
+    { cle: 'unPeuBas', niveau: 0, de: r(0.9), a: r(1) }, { cle: 'auMarche', niveau: 1, de: r(1), a: r(1.15) },
+    { cle: 'risque', niveau: -1, de: r(1.15), a: null },
+  ];
 }
 
 /** Palier d'un prix donné pour un profil. */

@@ -130,11 +130,22 @@ function firebaseBackend(cfg) {
       db = s.getFirestore(inst);
       await new Promise((resolve) => {
         a.onAuthStateChanged(auth, async (fbUser) => {
-          current = fbUser ? await this.load(fbUser) : null;
+          try {
+            current = fbUser ? await this.load(fbUser) : null;
+          } catch (e) {
+            // Profil illisible (réseau, règles) : la session reste ouverte avec un profil minimal.
+            console.warn('Profil indisponible', e);
+            current = fbUser ? { uid: fbUser.uid, email: fbUser.email, nom: fbUser.displayName || '', profil: 'acheteur', plan: 'gratuit' } : null;
+          }
           emit();
           resolve();
         });
       });
+    },
+    /** Attend que le profil de la nouvelle session soit chargé (onAuthStateChanged est asynchrone). */
+    async attendre(uid) {
+      for (let i = 0; i < 150 && (current?.uid || null) !== uid; i++) await new Promise((r) => setTimeout(r, 100));
+      if ((current?.uid || null) !== uid) throw Object.assign(new Error('Connexion lente : réessayez dans un instant.'), { code: 'delai' });
     },
     ref(...path) { return fs.doc(db, 'users', current.uid, ...path); },
     async load(fbUser) {
@@ -151,21 +162,28 @@ function firebaseBackend(cfg) {
     },
     async signUp({ email, password, nom, profil }) {
       sessionStorage.setItem('datahouse:nouveau', JSON.stringify({ nom, profil }));
-      await fa.createUserWithEmailAndPassword(auth, email, password);
+      const cred = await fa.createUserWithEmailAndPassword(auth, email.trim(), password);
+      if (nom) fa.updateProfile(cred.user, { displayName: nom }).catch(() => {});
+      await this.attendre(cred.user.uid);
     },
-    async signIn({ email, password }) { await fa.signInWithEmailAndPassword(auth, email, password); },
+    async signIn({ email, password }) {
+      const cred = await fa.signInWithEmailAndPassword(auth, email.trim(), password);
+      await this.attendre(cred.user.uid);
+    },
     async signInGoogle(profil) {
       sessionStorage.setItem('datahouse:nouveau', JSON.stringify({ profil }));
       if (natif()) {
         const idt = await jetonGoogleNatif();
-        await fa.signInWithCredential(auth, fa.GoogleAuthProvider.credential(idt));
+        const cred = await fa.signInWithCredential(auth, fa.GoogleAuthProvider.credential(idt));
+        await this.attendre(cred.user.uid);
         return;
       }
       const provider = new fa.GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
-      await fa.signInWithPopup(auth, provider);
+      const cred = await fa.signInWithPopup(auth, provider);
+      await this.attendre(cred.user.uid);
     },
-    async signOut() { await fa.signOut(auth); },
+    async signOut() { await fa.signOut(auth); await this.attendre(null).catch(() => {}); },
     async update(patch) {
       const { plan, ...safe } = patch; // le forfait ne se modifie que côté administration
       await fs.updateDoc(fs.doc(db, 'users', current.uid), safe);
@@ -185,16 +203,34 @@ function firebaseBackend(cfg) {
   };
 }
 
+// Si le serveur de comptes est configuré mais injoignable, on n'ouvre PAS de comptes locaux :
+// ils contourneraient l'inscription réelle (et ses quotas). L'utilisateur peut réessayer.
+const horsService = {
+  mode: 'indisponible',
+  async init() { current = null; },
+  ...Object.fromEntries(['signUp', 'signIn', 'signInGoogle', 'update', 'favoris', 'setFavoris', 'usage', 'setUsage', 'reset']
+    .map((k) => [k, async () => { throw Object.assign(new Error('Service de connexion momentanément indisponible. Vérifiez votre connexion Internet, puis réessayez.'), { code: 'indisponible' }); }])),
+  async signOut() { current = null; },
+};
+
 export async function initAuth() {
   backend = CONFIG.firebase ? firebaseBackend(CONFIG.firebase) : local;
   try {
     await backend.init();
   } catch (e) {
-    console.error('Firebase indisponible, passage au mode local', e);
-    backend = local;
+    console.warn('Firebase indisponible', e);
+    const dev = ['localhost', '127.0.0.1'].includes(location.hostname); // tests locaux seulement
+    backend = CONFIG.firebase && !dev ? horsService : local;
     await backend.init();
   }
   emit();
+}
+
+/** Nouvel essai de connexion au serveur de comptes (après une panne réseau). */
+export async function retryAuth() {
+  if (backend?.mode !== 'indisponible') return true;
+  backend = firebaseBackend(CONFIG.firebase);
+  try { await backend.init(); emit(); return true; } catch { backend = horsService; return false; }
 }
 
 const wrap = (fn) => async (...args) => { await fn(...args); emit(); return current; };

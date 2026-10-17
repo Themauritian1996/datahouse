@@ -119,8 +119,42 @@ def _num(series: pd.Series) -> pd.Series:
     return pd.to_numeric(series, errors="coerce")
 
 
+TAILLES = {"1 person": "menages1", "2 persons": "menages2", "3 persons": "menages3", "4 persons": "menages4",
+           "5 or more persons": "menages5"}
+
+
+def _composition(df: pd.DataFrame) -> dict[str, dict]:
+    """Taille des ménages et part des ménages avec enfants (2021)."""
+    cs, ctyp, cn = _col(df, "Household size"), _col(df, "Household type"), _col(df, "Number of households (2021)")
+    out: dict[str, dict] = {}
+    if not (cs and ctyp and cn):
+        return out
+    for code, g in df.groupby("code"):
+        if not code:
+            continue
+        taille = g[g[ctyp].map(_norm).str.startswith("total - household type")]
+        tot_type = g[g[cs].map(_norm).str.startswith("total - households by household size")]
+        vals_t = {_norm(a): pd.to_numeric(v, errors="coerce") for a, v in zip(taille[cs], taille[cn])}
+        vals_h = {_norm(a): pd.to_numeric(v, errors="coerce") for a, v in zip(tot_type[ctyp], tot_type[cn])}
+        total = vals_t.get("total - households by household size")
+        if not total or pd.isna(total):
+            continue
+        d = {}
+        for lab, k in TAILLES.items():
+            v = vals_t.get(lab)
+            if v is not None and pd.notna(v):
+                d[k] = round(float(100 * v / total), 1)
+        enfants = sum(float(v) for k, v in vals_h.items() if pd.notna(v) and (k == "with children" or k.startswith("one one-parent")))
+        if enfants:
+            d["pctMenagesEnfants"] = round(100 * enfants / float(total), 1)
+        if d:
+            out[code] = d
+    return out
+
+
 def parse_income(source: Path) -> dict[str, dict]:
     df = _csd_rows(source)
+    compo = _composition(df)
     df = _pick(df, **{"Household size": "Total - Households by household size",
                       "Household type": "Total - Household type"})
     c21 = _col(df, "Median household total income (2020)")
@@ -140,6 +174,8 @@ def parse_income(source: Path) -> dict[str, dict]:
             rec["menages"] = float(n)
         if rec and r["code"]:
             out[r["code"]] = rec
+    for code, d in compo.items():
+        out.setdefault(code, {}).update(d)
     return out
 
 
@@ -199,9 +235,14 @@ def parse_age(source: Path) -> dict[str, dict]:
         if (v := first("median age")) is not None:
             d["ageMedian"] = v
         tot = vals.get("total - age")
-        p65 = vals.get("65 years and over")
-        if tot and pd.notna(tot) and p65 is not None and pd.notna(p65):
-            d["pct65"] = round(float(100 * p65 / tot), 1)
+        if tot and pd.notna(tot):
+            groupes = {"pct0_14": ["0 to 14 years"], "pct15_64": ["15 to 64 years"], "pct65": ["65 years and over"],
+                       "pct20_34": ["20 to 24 years", "25 to 29 years", "30 to 34 years"],
+                       "pct85": ["85 years and over"]}
+            for k, labs in groupes.items():
+                xs = [vals.get(lab) for lab in labs]
+                if all(x is not None and pd.notna(x) for x in xs):
+                    d[k] = round(float(100 * sum(xs) / tot), 1)
         if d:
             out[code] = d
     return out

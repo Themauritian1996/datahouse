@@ -102,3 +102,29 @@ export function scoreCards(sc, labels, facteursLabels) {
   return `<div class="scards">${cards}</div>`;
 }
 
+
+const NIV_ICO = { 2: ['up', 'up'], 1: ['up'], 0: ['neutral'], '-1': ['down'], '-2': ['down', 'down'] };
+const NIV_CLS = { 2: 'favorable', 1: 'favorable', 0: 'neutre', '-1': 'defavorable', '-2': 'defavorable' };
+
+/**
+ * Tableau de grille à 5 niveaux : pouces, libellé, fourchette chiffrée, écart avec la référence.
+ * `actuel` : valeur analysée (la ligne correspondante est mise en évidence).
+ */
+export function grilleTable(rows, labels, { actuel, ref, fmtv = money, extra } = {}) {
+  if (!rows) return '';
+  const plage = (g) => (g.de == null ? `moins de ${fmtv(g.a)}` : g.a == null ? `${fmtv(g.de)} et plus` : `${fmtv(g.de)} à ${fmtv(g.a)}`);
+  const ecart = (g) => {
+    if (!ref) return '';
+    const v = g.de == null ? g.a : g.a == null ? g.de : null;
+    const pc = (x) => `${x > 0 ? '+' : ''}${Math.round((x / ref - 1) * 100)} %`;
+    return g.de == null ? `&lt; ${pc(v)}` : g.a == null ? `&gt; ${pc(v)}` : `${pc(g.de)} à ${pc(g.a)}`;
+  };
+  return `<table class="grille"><tbody>${rows.map((g) => {
+    const on = actuel != null && (g.de == null || actuel >= g.de) && (g.a == null || actuel < g.a);
+    return `<tr class="${NIV_CLS[g.niveau]}${on ? ' on' : ''}">
+      <td class="g-ico">${NIV_ICO[g.niveau].map((n) => icon(n)).join('')}</td>
+      <td><b>${esc(labels[g.cle] || g.cle)}</b>${on ? '<small>prix analysé</small>' : ''}</td>
+      <td class="g-p">${plage(g)}${extra ? `<small>${esc(extra(g) || '')}</small>` : ''}</td>
+      <td class="g-e">${ecart(g)}</td></tr>`;
+  }).join('')}</tbody></table>`;
+}

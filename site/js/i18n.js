@@ -52,6 +52,7 @@ export const FACTEURS = {
 /** Libellés du rapport PDF. */
 export const R = {
   fr: {
+    reperes: 'Repères chiffrés', reperesNote: '++ très favorable, + favorable, = neutre, - défavorable, -- très défavorable. Écarts en % de la valeur estimée (prix) ou du loyer du marché (loyer).',
     rapportDu: 'Rapport du', valeurEstimee: 'VALEUR MARCHANDE ESTIMÉE', fourchette: 'Fourchette', a: 'à', role: 'Rôle',
     vueAerienne: 'Vue aérienne', facade: 'Façade', synthese: 'Synthèse', scores: 'Scores par profil',
     scoresNote: 'Score de 0 à 100. Favorable : 65 et plus. Neutre : 45 à 64. Défavorable : moins de 45.',
@@ -84,9 +85,13 @@ export const R = {
       pctBesoinImperieux: 'Ménages en besoin impérieux', ageMoyen: 'Âge moyen', ageMedian: 'Âge médian', pct65: '65 ans et plus',
       valeurDeclaree2021: 'Valeur médiane déclarée (2021)', valeurUnifamiliale2021: 'Valeur médiane déclarée, maisons (2021)',
       ratioPrixRevenu: 'Prix médian / revenu', rendementPlex: 'Rendement brut médian des plex', loyer: 'Loyer de référence',
+      pct20_34: 'Jeunes adultes (20-34 ans)', pctMenagesEnfants: 'Ménages avec enfants', menages1: 'Personnes seules',
+      pctDemenage1an: 'Ont déménagé en 1 an', groupesAge: 'Âge', age0_14: '0-14 ans', age15_64: '15-64 ans', age65: '65 ans et +',
+      tailleMenages: 'Taille des ménages (personnes)', occupation: 'Mode d\'occupation',
     },
   },
   en: {
+    reperes: 'Price benchmarks', reperesNote: '++ very favourable, + favourable, = neutral, - unfavourable, -- very unfavourable. Gaps in % of the estimated value (price) or of market rent (rent).',
     rapportDu: 'Report of', valeurEstimee: 'ESTIMATED MARKET VALUE', fourchette: 'Range', a: 'to', role: 'Assessment',
     vueAerienne: 'Aerial view', facade: 'Street view', synthese: 'Summary', scores: 'Scores by profile',
     scoresNote: 'Score from 0 to 100. Favourable: 65 and up. Neutral: 45 to 64. Unfavourable: below 45.',
@@ -119,6 +124,25 @@ export const R = {
       pctBesoinImperieux: 'Households in core housing need', ageMoyen: 'Average age', ageMedian: 'Median age', pct65: 'Aged 65 and over',
       valeurDeclaree2021: 'Median reported value (2021)', valeurUnifamiliale2021: 'Median reported value, houses (2021)',
       ratioPrixRevenu: 'Median price / income', rendementPlex: 'Median plex gross yield', loyer: 'Reference rent',
+      pct20_34: 'Young adults (20-34)', pctMenagesEnfants: 'Households with children', menages1: 'One-person households',
+      pctDemenage1an: 'Moved in the last year', groupesAge: 'Age', age0_14: '0-14', age15_64: '15-64', age65: '65+',
+      tailleMenages: 'Household size (people)', occupation: 'Tenure',
     },
+  },
+};
+
+/** Libellés des niveaux de la grille de prix et de loyer. */
+export const NIVEAUX = {
+  fr: {
+    acheteur: { excellent: 'Excellente affaire', bon: 'Bon prix', juste: 'Prix juste', eleve: 'Élevé', tropEleve: 'Trop élevé' },
+    vendeur: { brade: 'Prix bradé', rapide: 'Vente rapide', marche: 'Prix du marché', bonPrix: 'Bon prix', ambitieux: 'Très ambitieux' },
+    investisseur: { excellent: 'Excellent', bon: 'Bon', acceptable: 'Acceptable', faible: 'Faible', tresFaible: 'Très faible' },
+    loyer: { tresBas: 'Très sous le marché', bas: 'Sous le marché', unPeuBas: 'Un peu bas', auMarche: 'Au marché', risque: 'Risque d\'inoccupation' },
+  },
+  en: {
+    acheteur: { excellent: 'Great deal', bon: 'Good price', juste: 'Fair price', eleve: 'High', tropEleve: 'Too high' },
+    vendeur: { brade: 'Underpriced', rapide: 'Quick sale', marche: 'Market price', bonPrix: 'Good price', ambitieux: 'Very ambitious' },
+    investisseur: { excellent: 'Excellent', bon: 'Good', acceptable: 'Acceptable', faible: 'Weak', tresFaible: 'Very weak' },
+    loyer: { tresBas: 'Well below market', bas: 'Below market', unPeuBas: 'Slightly low', auMarche: 'At market', risque: 'Vacancy risk' },
   },
 };

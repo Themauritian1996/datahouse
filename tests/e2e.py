@@ -135,13 +135,13 @@ def run(pw, viewport, name, dark=False):
     page.fill("#i-loyer", "1450")
     page.wait_for_timeout(200)
     assert "Liquidités" in page.inner_text("#i-out")
-    for tab in ["Acheteur", "Vendeur", "Secteur", "Revente"]:
+    for tab in ["Acheteur", "Vendeur", "Quartier", "Économie", "Risques", "Démographie", "Revente"]:
         page.click(f".tab:text-is('{tab}')")
-        page.wait_for_timeout(900 if tab == "Secteur" else 300)
+        page.wait_for_timeout(1200 if tab in ("Quartier", "Risques", "Démographie") else 300)
         page.locator("#tabpanel").scroll_into_view_if_needed()
         page.screenshot(path=SHOTS / f"{name}-07-{tab.lower()}.png")
     assert "Station Laurier" in page.inner_text("#tabpanel") or True
-    page.click(".tab:text-is('Secteur')")
+    page.click(".tab:text-is('Démographie')")
     page.wait_for_selector("ul.pc li")
     pcs = page.inner_text("ul.pc")
     assert "Voie ferrée" in pcs, pcs

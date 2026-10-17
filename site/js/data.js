@@ -100,7 +100,11 @@ export async function geocode(q, signal) {
       .map((f) => {
         const p = f.properties;
         const ligne1 = [p.housenumber, p.street || p.name].filter(Boolean).join(' ');
-        const ligne2 = [p.city || p.town || p.village || p.county, p.postcode].filter(Boolean).join(', ');
+        // Le code postal d'OpenStreetMap est souvent celui d'un bâtiment voisin : on ne l'affiche pas.
+        // On indique plutôt le quartier (ou l'arrondissement) et la ville.
+        const ville = p.city || p.town || p.village || p.county;
+        const quartier = [p.district, p.locality].find((x) => x && x !== ville);
+        const ligne2 = [quartier, ville].filter(Boolean).join(', ');
         return { lon: f.geometry.coordinates[0], lat: f.geometry.coordinates[1], ligne1, ligne2,
           numero: p.housenumber, rue: p.street || p.name };
       });
@@ -108,6 +112,29 @@ export async function geocode(q, signal) {
     if (e.name === 'AbortError') throw e;
     return [];
   }
+}
+
+export const CP_RE = /^\s*([A-Za-z]\d[A-Za-z])\s*(\d[A-Za-z]\d)?\s*$/;
+
+/** Centre approximatif d'un code postal (ou de ses 3 premiers caractères), via OpenStreetMap. */
+export async function geocodeCP(q, signal) {
+  const m = q.match(CP_RE);
+  if (!m) return null;
+  const cp = `${m[1]} ${m[2] || ''}`.trim().toUpperCase();
+  const tries = [
+    `https://nominatim.openstreetmap.org/search?format=json&countrycodes=ca&limit=1&postalcode=${encodeURIComponent(cp)}`,
+    `https://photon.komoot.io/api/?q=${encodeURIComponent(cp)}&limit=1&bbox=-79.8,44.9,-57.1,62.6`,
+  ];
+  for (const url of tries) {
+    try {
+      const j = await fetch(url, { signal }).then((r) => (r.ok ? r.json() : null));
+      const hit = Array.isArray(j) ? j[0] && { lat: +j[0].lat, lon: +j[0].lon } : j?.features?.[0] && { lon: j.features[0].geometry.coordinates[0], lat: j.features[0].geometry.coordinates[1] };
+      if (hit && hit.lat > 44.9 && hit.lat < 62.6 && hit.lon > -79.8 && hit.lon < -57.1) return { ...hit, cp };
+    } catch (e) {
+      if (e.name === 'AbortError') throw e;
+    }
+  }
+  return null;
 }
 
 /** Trouve l'unité d'évaluation correspondant le mieux à une adresse géocodée. */

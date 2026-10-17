@@ -1,23 +1,26 @@
 // Fiche d'une propriété (unité d'évaluation) : estimation et analyses par profil.
 import { CONFIG } from './config.js';
 import {
-  estimate, comparables, percentile, median, analyseAcheteur, analyseVendeur, analyseInvestisseur,
+  estimate, comparables, percentile, median, analyseAcheteur, analyseVendeur, analyseInvestisseur, grillePrix, grilleLoyer,
   loyerEstime, indiceRevente, immeuble, taxesFoncieres, fraisCondo, ecartComparables, scores, zonesPrix, palierPrix, zonesLoyer, palierLoyer,
 } from './engine.js';
 import { loadMuni, unitsAround, getUnit, munisLoaded } from './data.js';
 import { environs, prosCons } from './analysis.js';
-import { histogram, gauge, meter, rangeBar, zonesBars, scoreCards, palierTag } from './charts.js';
+import { histogram, gauge, meter, rangeBar, zonesBars, scoreCards, palierTag, grilleTable } from './charts.js';
 import { money, kmoney, pct, signedPct, num, num1, dist, esc, date, aire, parAire, uniteLabel } from './format.js';
 import { vueAerienne, photoFacade, lienFacade, ORTHO_CREDIT } from './photo.js';
-import { titreComparables, FACTEURS } from './i18n.js';
+import { titreComparables, FACTEURS, NIVEAUX } from './i18n.js';
 import { getPrefs, setPrefs } from './prefs.js';
+import { portraitDemo, apercuDemo } from './demo.js';
+import { quartierHtml, economieHtml, risquesHtml, lieuxAutour } from './quartier.js';
 import { $, $$, kpi, row, section, field, val, icon, toast } from './ui.js';
 import * as auth from './auth.js';
 import { synthese, pdfReport, saveFile, shareLink, comparablesCsv, isNative } from './report.js';
 
 const LIENS = { 1: 'Détaché', 2: 'Jumelé', 3: 'En rangée (bout)', 4: 'En rangée', 5: 'Intégré (copropriété)' };
 const TABS = {
-  acheteur: 'Acheteur', vendeur: 'Vendeur', investisseur: 'Investisseur', secteur: 'Secteur', revente: 'Revente',
+  acheteur: 'Acheteur', vendeur: 'Vendeur', investisseur: 'Investisseur', quartier: 'Quartier', economie: 'Économie',
+  risques: 'Risques', secteur: 'Démographie', revente: 'Revente',
 };
 
 function tabOrder(profil) {
@@ -158,7 +161,7 @@ export async function renderUnit(ctx, id, coords) {
       <p class="lead">${pc != null ? `Plus élevée que <b>${pc} %</b> des propriétés comparables de la municipalité. ` : ''}
       Médiane : <b>${kmoney(ts.medEst)}</b> (moitié centrale : ${kmoney(ts.p25)} à ${kmoney(ts.p75)}).</p>`) : '';
 
-  ctx.sheet.open(`${head}${photo}${hero}${kpis}${carac}${immHtml}${position}<div id="gated"></div>`);
+  ctx.sheet.open(`${head}${photo}${hero}${kpis}${carac}${immHtml}${position}${apercuDemo(muni)}<div id="gated"></div>`);
   const body = ctx.sheet.body;
   chargerPhotos(body, unit);
 
@@ -236,6 +239,12 @@ export async function renderUnit(ctx, id, coords) {
   ctxTab.majDecision = () => { clearTimeout(tDecision); tDecision = setTimeout(() => decision.isConnected && (decision.innerHTML = decisionHtml(ctxTab)), 120); };
   st.onChange = ctxTab.majDecision;
   decision.innerHTML = decisionHtml(ctxTab);
+  decision.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-grille]');
+    if (!b) return;
+    ctxTab.grille = b.dataset.grille;
+    decision.innerHTML = decisionHtml(ctxTab);
+  });
   environs(unit.lat, unit.lon).then((osm) => { if (osm) { ctxTab.osm = osm; ctxTab.majDecision(); } }).catch(() => {});
   const show = (k) => {
     $$('.tab', body).forEach((t) => t.classList.toggle('on', t.dataset.tab === k));
@@ -249,6 +258,7 @@ export async function renderUnit(ctx, id, coords) {
     await saveFile(comparablesCsv(unit, comps), 'DataHouse-comparables.csv', 'Comparables');
   });
   const needPro = () => {
+    if (!auth.getUser()) { toast('Créez un compte gratuit pour obtenir le rapport.'); ctx.navigate('#/compte?inscription'); return true; }
     if (auth.forfait().rapports) return false;
     toast('Les rapports PDF et imprimables font partie du forfait Pro.', 'warn');
     ctx.navigate('#/tarifs');
@@ -447,25 +457,7 @@ const RENDER = {
     const c = muni.recensement || {};
     panel.innerHTML = `
       <div id="s-pc">${section('Avantages et inconvénients', '<p class="loading">Analyse des commodités autour de l\'adresse…</p>')}</div>
-      ${section(`Portrait de ${muni.nom}`, `<div class="grid2">${[
-        ['Population (2021)', c.pop2021, num(c.pop2021)],
-        ['Croissance 2016-2021', c.croissancePop, signedPct(c.croissancePop)],
-        ['Ménages', c.menages, num(c.menages)],
-        ['Revenu médian des ménages (2020)', c.revenuMenage, money(c.revenuMenage)],
-        ['Hausse du revenu 2015-2020', c.croissanceRevenu, signedPct(c.croissanceRevenu)],
-        ['Propriétaires', c.pctProprio, pct(c.pctProprio, 0)],
-        ['Locataires au-delà de 30 % du revenu', c.pctInabordableLocataire, pct(c.pctInabordableLocataire, 0)],
-        ['Propriétaires au-delà de 30 % du revenu', c.pctInabordableProprio, pct(c.pctInabordableProprio, 0)],
-        ['Ménages en besoin impérieux de logement', c.pctBesoinImperieux, pct(c.pctBesoinImperieux, 0)],
-        ['Âge moyen', c.ageMoyen, num1(c.ageMoyen)],
-        ['Âge médian', c.ageMedian, num1(c.ageMedian)],
-        ['65 ans et plus', c.pct65, pct(c.pct65, 0)],
-        ['Ont déménagé en 1 an', c.pctDemenage1an, pct(c.pctDemenage1an, 0)],
-        ['Valeur médiane déclarée (2021)', c.valeurDeclaree2021, money(c.valeurDeclaree2021)],
-        ['Prix médian / revenu', muni.ratioPrixRevenu, num1(muni.ratioPrixRevenu)],
-        ['Densité', c.densite, c.densite ? `${num(c.densite)} hab./km²` : '—'],
-      ].filter((r) => r[1] != null).map(([l, , v]) => row(l, v)).join('')}
-      </div>`, { note: 'Source : Statistique Canada, Recensement de 2021.' })}
+      ${portraitDemo(muni)}
       <div id="s-env"></div>
       ${newsHtml(muni)}`;
     const osm = await environs(unit.lat, unit.lon);
@@ -478,6 +470,26 @@ const RENDER = {
         row(o.label, o.plusProche != null ? `${dist(o.plusProche)}${o.nuisance ? '' : ` · ${o.n}`}` : (o.nuisance ? 'aucune' : 'aucun'), o.nuisance && o.n ? 'bad' : '')).join('')}</div>`,
       { note: 'Distance à vol d\'oiseau du plus proche, puis nombre trouvé dans le rayon de recherche.' });
     }
+  },
+
+  async quartier(panel, ctxT) {
+    const { unit } = ctxT;
+    panel.innerHTML = quartierHtml({ unit, osm: ctxT.osm, ecoles: ctxT.ecoles });
+    const [osm, ecoles] = await Promise.all([ctxT.osm || environs(unit.lat, unit.lon), ctxT.ecoles || lieuxAutour('ecoles', unit.lat, unit.lon, 3000)]);
+    ctxT.osm = osm; ctxT.ecoles = ecoles;
+    if (panel.isConnected && $('.tab.on')?.dataset.tab === 'quartier') panel.innerHTML = quartierHtml({ unit, osm, ecoles });
+  },
+
+  economie(panel, { muni, meta }) {
+    panel.innerHTML = economieHtml({ muni, meta });
+  },
+
+  async risques(panel, ctxT) {
+    const { unit } = ctxT;
+    panel.innerHTML = risquesHtml({ unit, osm: ctxT.osm, terrains: ctxT.terrains });
+    const [osm, terrains] = await Promise.all([ctxT.osm || environs(unit.lat, unit.lon), ctxT.terrains || lieuxAutour('terrains', unit.lat, unit.lon, 1000)]);
+    ctxT.osm = osm; ctxT.terrains = terrains;
+    if (panel.isConnected && $('.tab.on')?.dataset.tab === 'risques') panel.innerHTML = risquesHtml({ unit, osm, terrains });
   },
 
   revente(panel, { unit, muni, pc }) {
@@ -513,7 +525,34 @@ function decisionHtml(ctxT) {
   return `${section('Scores par profil', scoreCards(sc, { acheteur: 'Acheteur', vendeur: 'Vendeur', investisseur: 'Investisseur' }, FACTEURS.fr),
     { note: `Score de 0 à 100 : favorable à partir de 65, neutre de 45 à 64, défavorable sous 45. Touchez une carte pour voir les facteurs.${osm ? '' : ' Les commodités s\'ajoutent dès qu\'elles sont chargées.'}` })}
     ${section('Zones de prix', `${zonesBars(rangees, reperes)}<div class="ztags">Prix analysé (${kmoney(st.prix)}) : ${tags}</div>`,
-    { note: `Acheteur et vendeur : selon la fourchette estimée. Investisseur : capitalisation de 5 % ou plus (favorable) et sous 4 % (défavorable) avec un loyer de ${money(st.loyer)} par logement${unit.lg > 1 ? ` × ${st.logements}` : ''}. Modifiez le prix ou le loyer dans les onglets pour mettre à jour.` })}`;
+    { note: `Acheteur et vendeur : selon la fourchette estimée. Investisseur : capitalisation de 5 % ou plus (favorable) et sous 4 % (défavorable) avec un loyer de ${money(st.loyer)} par logement${unit.lg > 1 ? ` × ${st.logements}` : ''}. Modifiez le prix ou le loyer dans les onglets pour mettre à jour.` })}
+    ${grillesHtml(ctxT)}`;
+}
+
+/** Repères chiffrés à 5 niveaux pour chaque profil (prix) et pour le loyer. */
+function grillesHtml(ctxT) {
+  const { unit, muni, est, st } = ctxT;
+  const g = grillePrix(est, st);
+  const N = NIVEAUX.fr;
+  const loyerM = loyerEstime(unit, muni);
+  const gl = grilleLoyer(loyerM);
+  const onglets = [['acheteur', 'Acheteur'], ['vendeur', 'Vendeur'], ...(g.investisseur ? [['investisseur', 'Investisseur']] : []), ...(gl ? [['loyer', 'Loyer']] : [])];
+  const actif = ctxT.grille && onglets.some(([k]) => k === ctxT.grille) ? ctxT.grille : (auth.getUser()?.profil === 'investisseur' && g.investisseur ? 'investisseur' : auth.getUser()?.profil === 'vendeur' ? 'vendeur' : 'acheteur');
+  const corps = {
+    acheteur: () => grilleTable(g.acheteur, N.acheteur, { actuel: st.prix, ref: est.valeur }),
+    vendeur: () => grilleTable(g.vendeur, N.vendeur, { actuel: st.prix, ref: est.valeur }),
+    investisseur: () => grilleTable(g.investisseur, N.investisseur, { actuel: st.prix, ref: est.valeur, extra: (x) => `capitalisation ${x.cap}` }),
+    loyer: () => grilleTable(gl, N.loyer, { actuel: st.loyer, ref: loyerM, fmtv: money }),
+  };
+  const notes = {
+    acheteur: 'Pour un acheteur : plus le prix est bas par rapport à la valeur estimée, meilleure est l\'affaire. Écart en % par rapport à la valeur estimée.',
+    vendeur: 'Pour un vendeur : au-dessus du marché, la vente prend généralement plus de temps ; en dessous, elle est rapide mais laisse de l\'argent sur la table.',
+    investisseur: `Taux de capitalisation = revenu net d'exploitation / prix, avec ${money(st.loyer)} par logement, ${st.vacance} % d'inoccupation et les dépenses de l'onglet Investisseur.`,
+    loyer: `Par logement et par mois, par rapport au loyer du marché estimé (${money(loyerM)}).`,
+  };
+  return section('Repères chiffrés', `
+    <div class="seg grille-seg" role="tablist">${onglets.map(([k, l]) => `<button type="button" data-grille="${k}" class="${k === actif ? 'on' : ''}">${l}</button>`).join('')}</div>
+    ${corps[actif]()}`, { note: notes[actif] });
 }
 
 /** Vue aérienne (imagerie du Québec) et, si configurée, photo de la façade. */

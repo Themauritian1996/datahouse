@@ -1,6 +1,6 @@
 // Point d'entrée : coquille, routage, recherche et panneau latéral.
 import { CONFIG } from './config.js';
-import { loadMeta, searchMunis, geocode, unitsAround, matchAddress } from './data.js';
+import { loadMeta, searchMunis, geocode, geocodeCP, CP_RE, unitsAround, matchAddress } from './data.js';
 import { Carte, legend } from './map.js';
 import { renderUnit, renderBuilding } from './views-unit.js';
 import { renderMuni } from './views-muni.js';
@@ -14,6 +14,7 @@ import { getPrefs, setPrefs, onPrefs } from './prefs.js';
 const sheetEl = $('#sheet');
 let navCount = 0; // navigations internes (pour un « retour » qui reste dans l'application)
 let derniereUnite = getPrefs().unites;
+let uidAffiche; // utilisateur pour lequel la vue courante a été dessinée
 const pageEl = $('#page');
 const homeEl = $('#home');
 let homeReady = false;
@@ -113,6 +114,11 @@ function attachSearch(input, box, form = null) {
     input.blur();
     input.value = it.l1;
     if (it.kind === 'muni') { ctx.navigate(`#/m/${it.code}`); return; }
+    if (it.kind === 'cp') {
+      ctx.navigate(`#/carte?ll=${it.lat},${it.lon}`);
+      toast(`Secteur du code postal ${it.l1} (position approximative). Touchez une propriété.`);
+      return;
+    }
     showHome(false);
     ctx.carte.flyTo(it.lon, it.lat, 17.5);
     sheet.loading();
@@ -132,6 +138,16 @@ function attachSearch(input, box, form = null) {
       const munis = (await searchMunis(q, /\d/.test(q) ? 2 : 5)).map((m) => ({ kind: 'muni', code: m.c, l1: m.n,
         l2: [m.r, m.v ? `unifamiliale médiane ${kmoney(m.v)}` : ''].filter(Boolean).join(' · ') }));
       items = munis; render();
+      if (CP_RE.test(q)) {
+        ctrl?.abort();
+        ctrl = new AbortController();
+        try {
+          const cp = await geocodeCP(q, ctrl.signal);
+          items = cp ? [{ kind: 'cp', ...cp, l1: cp.cp, l2: 'Secteur du code postal (approximatif)' }] : [];
+          render();
+        } catch { /* requête annulée */ }
+        return;
+      }
       if (q.length >= 4 && (/\d/.test(q) || munis.length < 3)) {
         ctrl?.abort();
         ctrl = new AbortController();
@@ -155,6 +171,12 @@ function attachSearch(input, box, form = null) {
     if (items.length) { choose(items[Math.max(0, active)]); return; }
     const q = input.value.trim();
     if (q.length < 2) { input.focus(); return; }
+    if (CP_RE.test(q)) {
+      const cp = await geocodeCP(q).catch(() => null);
+      if (cp) { choose({ kind: 'cp', ...cp, l1: cp.cp }); return; }
+      toast('Code postal introuvable. Essayez avec une adresse complète.');
+      return;
+    }
     const m = await searchMunis(q, 1);
     if (m.length) { choose({ kind: 'muni', code: m[0].c, l1: m[0].n }); return; }
     try {
@@ -233,6 +255,10 @@ function setupAccount() {
     b.innerHTML = u ? `<span class="avatar">${esc((u.nom || u.email || '?').trim()[0].toUpperCase())}</span>` : icon('user');
     b.title = u ? 'Mon compte' : 'Connexion';
     $('#menu-fav').hidden = !u;
+    // Connexion ou déconnexion : la fiche ouverte se redessine (analyse complète ou invitation).
+    const uid = u?.uid || null;
+    if (uidAffiche !== undefined && uid !== uidAffiche && /^#\/(u|b)\//.test(location.hash)) setTimeout(route, 0);
+    uidAffiche = uid;
   });
   $('#account').addEventListener('click', () => $('#menu').classList.toggle('show'));
   document.addEventListener('click', (e) => { if (!e.target.closest('#menu, #account')) $('#menu').classList.remove('show'); });

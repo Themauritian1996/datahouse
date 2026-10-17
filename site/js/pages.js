@@ -59,6 +59,7 @@ function pageConnexion(ctx, inscription) {
       <h1>${inscription ? 'Créer un compte gratuit' : 'Connexion'}</h1>
       <p class="lead">${inscription ? 'Analyses détaillées, favoris et scénarios personnalisés.' : 'Heureux de vous revoir.'}</p>
       ${auth.mode() === 'local' ? '<p class="flag">Mode démonstration : le compte est conservé seulement dans ce navigateur.</p>' : ''}
+      ${auth.mode() === 'indisponible' ? '<div class="flag bad">Le service de connexion ne répond pas (connexion Internet ?). <button class="btn" id="retry" type="button">Réessayer</button></div>' : ''}
       <form id="auth-form">
         ${inscription ? '<label class="field"><span>Nom</span><input id="nom" autocomplete="name" required></label>' : ''}
         <label class="field"><span>Courriel</span><input id="email" type="email" autocomplete="email" required></label>
@@ -72,6 +73,10 @@ function pageConnexion(ctx, inscription) {
         <span>${inscription ? 'Créer un compte avec Google' : 'Continuer avec Google'}</span></button>` : ''}
       <p class="center">${inscription ? '<a href="#/compte">J\'ai déjà un compte</a>' : '<a href="#/compte?inscription">Créer un compte</a> · <a href="#" id="reset">Mot de passe oublié</a>'}</p>
     </div>`);
+  $('#retry')?.addEventListener('click', async () => {
+    toast((await auth.retryAuth()) ? 'Service de connexion rétabli.' : 'Toujours indisponible. Réessayez dans un moment.');
+    pageConnexion(ctx, inscription);
+  });
   $('#auth-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const btn = e.target.querySelector('button[type=submit]');
@@ -99,7 +104,8 @@ function pageConnexion(ctx, inscription) {
   });
   $('#reset')?.addEventListener('click', async (e) => {
     e.preventDefault();
-    try { await auth.resetPassword($('#email').value); toast('Courriel de réinitialisation envoyé.'); } catch (err) { toast(frError(err), 'warn'); }
+    if (!$('#email').value.trim()) { toast('Entrez d\'abord votre courriel ci-dessus.', 'warn'); $('#email').focus(); return; }
+    try { await auth.resetPassword($('#email').value.trim()); toast('Courriel de réinitialisation envoyé (vérifiez aussi les indésirables).'); } catch (err) { toast(frError(err), 'warn'); }
   });
 }
 
@@ -109,6 +115,12 @@ function frError(err) {
   if (code.includes('invalid-credential') || code.includes('wrong-password') || code.includes('user-not-found')) return 'Courriel ou mot de passe invalide.';
   if (code.includes('weak-password')) return 'Mot de passe trop faible (8 caractères minimum).';
   if (code.includes('invalid-email')) return 'Courriel invalide.';
+  if (code.includes('network-request-failed')) return 'Pas de connexion Internet. Vérifiez votre réseau et réessayez.';
+  if (code.includes('too-many-requests')) return 'Trop de tentatives. Patientez quelques minutes ou réinitialisez votre mot de passe.';
+  if (code.includes('operation-not-allowed')) return 'Ce mode de connexion n\'est pas activé pour le moment.';
+  if (code.includes('unauthorized-domain')) return 'Connexion non autorisée depuis cette adresse du site.';
+  if (code.includes('user-disabled')) return 'Ce compte a été désactivé.';
+  if (code.includes('missing-password')) return 'Entrez votre mot de passe.';
   if (code.includes('popup-blocked')) return 'La fenêtre Google a été bloquée par le navigateur. Autorisez les fenêtres surgissantes pour ce site.';
   if (code.includes('account-exists-with-different-credential')) return 'Ce courriel est déjà associé à un compte avec mot de passe. Connectez-vous avec votre mot de passe.';
   if (code.includes('delai')) return 'La connexion Google a expiré. Réessayez.';

@@ -542,3 +542,49 @@ body.on-home .brand span { display: inline !important; }
 .or { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; margin: 14px 0 10px; }
 .or::before, .or::after { content: ''; flex: 1; height: 1px; background: var(--line); }
 .btn.google .ic.g { stroke: none; }
+
+/* ---------- Démographie ---------- */
+.dgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px 18px; margin-bottom: 14px; }
+.dbars-t { font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+.dbar { display: grid; grid-template-columns: 82px 1fr 38px; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); padding: 2px 0; }
+.dbar i { display: block; height: 8px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
+.dbar b { display: block; height: 100%; border-radius: 4px; background: var(--brand); }
+.dbar em { font-style: normal; text-align: right; color: var(--text); font-variant-numeric: tabular-nums; }
+.dmini { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; }
+.dmini div { display: flex; flex-direction: column; }
+.dmini b { font-family: var(--display); font-size: 24px; font-weight: 600; line-height: 1.1; }
+.dmini span { font-size: 12px; color: var(--muted); }
+/* ---------- Grilles chiffrées à 5 niveaux ---------- */
+.grille-seg { margin-bottom: 10px; flex-wrap: wrap; }
+.grille { width: 100%; border-collapse: collapse; font-size: 13px; }
+.grille td { padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.grille tr:last-child td { border-bottom: 0; }
+.grille .g-ico { width: 44px; white-space: nowrap; }
+.grille .g-ico .ic { width: 15px; height: 15px; }
+.grille tr.favorable .g-ico { color: var(--good); }
+.grille tr.neutre .g-ico { color: var(--mid); }
+.grille tr.defavorable .g-ico { color: var(--bad); }
+.grille .g-p { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+.grille .g-e { text-align: right; color: var(--muted); font-size: 12px; white-space: nowrap; width: 84px; }
+.grille small { display: block; font-size: 11px; color: var(--muted); font-weight: 500; }
+.grille tr.on td { background: var(--surface-2); }
+.grille tr.on td:first-child { box-shadow: inset 3px 0 0 var(--text); }
+
+/* ---------- Quartier, économie, risques ---------- */
+h4.sub { font-size: 13px; font-weight: 600; color: var(--muted); margin: 12px 0 4px; }
+.lieux { list-style: none; margin: 0; padding: 0; }
+.lieux li { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+.lieux li:last-child { border-bottom: 0; }
+.lieux li div { display: flex; flex-direction: column; min-width: 0; }
+.lieux small { color: var(--muted); font-size: 12px; }
+.lieux small a { color: var(--text); }
+.lieux li > span { color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.prox { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.prox-v { font-family: var(--display); font-size: 40px; font-weight: 700; line-height: 1; }
+.prox-v small { font-size: 16px; color: var(--muted); font-weight: 500; }
+.mrows { margin-top: 12px; display: grid; gap: 4px; }
+.risques { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.risques li { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: start; }
+.risques b { font-size: 14px; }
+.risques p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+.risques .palier { margin-top: 1px; }

@@ -17,7 +17,7 @@ from datetime import date, datetime, timezone
 import numpy as np
 import pandas as pd
 
-from common import OUT, clean_dir, log, setup_logging, write_json
+from common import OUT, clean_dir, log, norm, setup_logging, write_json
 import boundaries
 import census as census_mod
 import markets
@@ -26,6 +26,8 @@ import news as news_mod
 import rfu as rfu_mod
 import role as role_mod
 import taxes as taxes_mod
+import lieux as lieux_mod
+import inondation as inondation_mod
 
 # Droits de mutation (taxe de bienvenue) 2026 — tranches de base de la loi,
 # plus les tranches supplémentaires adoptées par Montréal et Québec.
@@ -46,6 +48,16 @@ DROITS_MUTATION = {
 }
 
 SOURCES = [
+    {"nom": "Base de données des zones inondables (BDZI)", "editeur": "Ministère de l'Environnement du Québec",
+     "licence": "CC-BY 4.0", "url": "https://www.donneesquebec.ca/recherche/dataset/base-de-donnees-des-zones-inondables"},
+    {"nom": "Localisation des établissements d'enseignement et indices de défavorisation des écoles", "editeur": "Ministère de l'Éducation du Québec",
+     "licence": "CC-BY 4.0", "url": "https://www.donneesquebec.ca/recherche/dataset/localisation-des-etablissements-d-enseignement-du-reseau-scolaire-au-quebec"},
+    {"nom": "Répertoire des terrains contaminés", "editeur": "Ministère de l'Environnement du Québec",
+     "licence": "CC-BY 4.0", "url": "https://www.donneesquebec.ca/recherche/dataset/repertoire-des-terrains-contamines-gtc"},
+    {"nom": "Enquête sur les logements locatifs (taux d'inoccupation, loyers moyens), tableaux 34-10-0127 et 34-10-0133", "editeur": "SCHL — Statistique Canada",
+     "licence": "Licence du gouvernement ouvert — Canada", "url": "https://www150.statcan.gc.ca/t1/tbl1/fr/tv.action?pid=3410013301"},
+    {"nom": "Enquête sur la population active par région économique, tableau 14-10-0387", "editeur": "Statistique Canada",
+     "licence": "Licence du gouvernement ouvert — Canada", "url": "https://www150.statcan.gc.ca/t1/tbl1/fr/tv.action?pid=1410038701"},
     {"nom": "Prévisions budgétaires des municipalités (taux de taxe foncière adoptés)", "editeur": "MAMH — Données Québec",
      "licence": "CC-BY 4.0", "url": "https://www.donneesquebec.ca/recherche/dataset/rapport-financier-des-organismes-municipaux-et-autres-documents"},
     {"nom": "Imagerie aérienne continue du Québec", "editeur": "Gouvernement du Québec",
@@ -89,6 +101,7 @@ def write_tiles(units: pd.DataFrame, dest) -> int:
     units["la"] = np.floor(units["lat"] * 100).astype(int)
     units["lo"] = np.floor(units["lon"] * 100).astype(int)
     n = 0
+    has_zi = "zi" in units.columns
     for (la, lo), g in units.groupby(["la", "lo"]):
         codes = sorted(g["muni"].unique())
         idx = {c: i for i, c in enumerate(codes)}
@@ -103,7 +116,7 @@ def write_tiles(units: pd.DataFrame, dest) -> int:
                 int(r.vr), None if pd.isna(r.va) else int(r.va),
                 None if pd.isna(r.et) else int(r.et),
                 None if pd.isna(r.li) else int(r.li), r.id,
-            ])
+            ] + ([int(r.zi)] if has_zi and not pd.isna(r.zi) else []))
         write_json(dest / str(la) / f"{la}_{lo}.json", {"m": codes, "u": rows})
         n += 1
     return n
@@ -130,6 +143,11 @@ def main() -> None:
         cpi = markets.rent_cpi_factor(fx["cpi"])
         asking = markets.asking_rents(fx["asking"])
         rate = {"tauxAffiche5ans": 6.19, "date": "2026-10-07"}
+        schl = {"inoccupation": {"montreal": 2.9, "quebec": 2.6, "sherbrooke": 2.5}, "loyer2ch": {"montreal": 1291, "quebec": 1218, "sherbrooke": 1047, "granby": 1015},
+                "anneeInoccupation": "2025", "anneeLoyer": "2025"}
+        epa = {"montreal": {"periode": "2026-08", "region": "Montréal", "chomage": 7.4, "chomageVar": 0.6, "tauxEmploi": 63.1, "activite": 68.1},
+               "laval": {"periode": "2026-08", "region": "Laval", "chomage": 5.9, "tauxEmploi": 62.0, "activite": 65.9},
+               "capitalenationale": {"periode": "2026-08", "region": "Capitale-Nationale", "chomage": 4.1, "tauxEmploi": 63.5, "activite": 66.2}}
         units = role_mod.load_role(fx["gpkg"], munis)
         taxes = taxes_mod.load_taxes(fx["taxes"], 2026)
     else:
@@ -147,6 +165,8 @@ def main() -> None:
         cpi = markets.rent_cpi_factor()
         asking = markets.asking_rents()
         rate = markets.mortgage_rate()
+        schl = markets.schl_rentals()
+        epa = markets.labour_force()
         units = role_mod.load_role(None, munis)
         try:
             taxes = taxes_mod.load_taxes()
@@ -168,6 +188,28 @@ def main() -> None:
         centres[code] = [round(pt.x, 5), round(pt.y, 5)]
     names = dict(zip(munis["code"], munis["nom"]))
 
+    import re
+    cle = lambda x: re.sub(r"[^a-z]", "", norm(x or ""))  # noqa: E731
+    epa_k = {cle(k): v for k, v in epa.items()}
+    # Centre SCHL d'une municipalité : même nom, sinon la communauté métropolitaine, sinon le centre le plus proche (30 km).
+    schl_keys = set(schl.get("loyer2ch", {})) | set(schl.get("inoccupation", {}))
+    centres_schl = {norm(names.get(c) or ""): centres[c] for c in centres if norm(names.get(c) or "") in schl_keys}
+
+    def centre_schl(nom, cm, xy):
+        n = norm(nom or "")
+        if n in schl_keys:
+            return n
+        c = norm(cm or "")
+        for k in ("montreal", "quebec", "gatineau"):
+            if k in c and k in schl_keys:
+                return k
+        best, dmin = None, 30.0
+        for k, (x, y) in centres_schl.items():
+            d = math.hypot((x - xy[0]) * 78.0, (y - xy[1]) * 111.0)
+            if d < dmin:
+                best, dmin = k, d
+        return best
+
     index, props = [], {}
     cpi_f = cpi.get("facteur")
     for code in sorted(units["muni"].unique()):
@@ -184,6 +226,10 @@ def main() -> None:
         key = model.cma_key(nom, r.get("cm"), asking.get("deuxChambres", {}))
         affiche = asking["deuxChambres"].get(key) if key else None
         loyer_src = "recensement" if loyer_est else None
+        ks = centre_schl(nom, r.get("cm"), centre)
+        schl2 = schl.get("loyer2ch", {}).get(ks) if ks else None
+        if schl2:  # loyer moyen en place (Enquête sur les logements locatifs de la SCHL), le plus fiable
+            loyer_est, loyer_src = schl2, "schl"
         if not loyer_est and affiche:  # repli : loyer affiché régional, prudemment réduit
             loyer_est, loyer_src = round(affiche * 0.9 / 5) * 5, "affiche"
         u = st.get("U") or st.get("C") or {}
@@ -201,7 +247,11 @@ def main() -> None:
             "types": st,
             "recensement": c,
             "loyer": {"median2021": loyer2021, "facteurIPC": cpi_f, "estime": loyer_est, "source": loyer_src,
-                      "affiche2ch": affiche, "region": key, "periodeAffiche": asking.get("periode")},
+                      "affiche2ch": affiche, "region": key, "periodeAffiche": asking.get("periode"),
+                      "schl2ch": schl2, "anneeSCHL": schl.get("anneeLoyer"), "centreSCHL": ks},
+            "economie": {**(epa_k.get(cle(r.get("region"))) or {}),
+                         "inoccupation": schl.get("inoccupation", {}).get(ks) if ks else None,
+                         "anneeInoccupation": schl.get("anneeInoccupation"), "centreSCHL": ks},
             "rendementPlex": rendement,
             "liquidite": liq,
             "ratioPrixRevenu": round(ratio_pr, 2) if ratio_pr else None,
@@ -238,7 +288,38 @@ def main() -> None:
 
     write_json(out / "municipalites.json", index)
     boundaries.export_simplified(munis[munis["code"].isin(props)], out / "munis.geojson", props)
+    # Zone inondable de chaque propriété (Base de données des zones inondables du Québec)
+    if not args.demo:
+        try:
+            units["zi"] = inondation_mod.zones_pour(units)
+        except Exception as exc:  # noqa: BLE001 — facultatif
+            log.warning("zones inondables indisponibles : %s", exc)
+    else:
+        units["zi"] = 0
+        units.loc[units.sample(min(40, len(units)), random_state=2).index, "zi"] = 1
     n_tiles = write_tiles(units, out / "tuiles")
+
+    # Écoles et terrains contaminés (fichiers par cellule de 0,05°, chargés à la demande)
+    if args.demo:
+        smp = units.sample(min(60, len(units)), random_state=4)
+        ecoles = [{"n": f"École {'primaire' if i % 3 else 'secondaire'} {i + 1}", "la": round(float(r.lat) + 0.002, 5), "lo": round(float(r.lon) - 0.002, 5),
+                   "r": "prive" if i % 7 == 0 else "public", "p": int(i % 3 != 0), "s": int(i % 3 == 0), "pre": int(i % 3 != 0),
+                   "l": "fr", **({"imse": 1 + i % 10} if i % 7 else {})} for i, r in enumerate(smp.itertuples())]
+        terrains = [{"la": round(float(r.lat) - 0.001, 5), "lo": round(float(r.lon) + 0.001, 5), "a": "Adresse fictive", "e": "termine" if i % 2 else "encours"}
+                    for i, r in enumerate(smp.head(12).itertuples())]
+    else:
+        try:
+            ecoles = lieux_mod.load_ecoles()
+        except Exception as exc:  # noqa: BLE001
+            log.warning("écoles indisponibles : %s", exc)
+            ecoles = []
+        try:
+            terrains = lieux_mod.load_terrains()
+        except Exception as exc:  # noqa: BLE001
+            log.warning("terrains contaminés indisponibles : %s", exc)
+            terrains = []
+    log.info("fichiers écoles : %d, terrains : %d",
+             lieux_mod.export_par_cellule(ecoles, out / "ecoles"), lieux_mod.export_par_cellule(terrains, out / "terrains"))
     log.info("%d tuiles écrites", n_tiles)
 
     if not args.no_news and not args.demo:
